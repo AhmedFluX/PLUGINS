@@ -147,6 +147,18 @@ cmd({
             menuText += `\n${DESCRIPTION}`;
         }
 
+        // ORIGINAL CHANNEL PREVIEW
+        const contextInfo = {
+            mentionedJid: [m.sender],
+            forwardingScore: 999,
+            isForwarded: true,
+            forwardedNewsletterMessageInfo: {
+                newsletterJid: '120363429311414073@newsletter',
+                newsletterName: BOT_NAME,
+                serverMessageId: 143
+            }
+        };
+
         // MENU IMAGE
         const localImagePath = path.join(
             __dirname,
@@ -166,20 +178,24 @@ cmd({
             image = { url: BOT_IMAGE };
         }
 
-        // SEND MENU
+        // SEND MENU WITH CHANNEL PREVIEW
         if (image) {
             await conn.sendMessage(
                 from,
                 {
                     image: image,
-                    caption: menuText
+                    caption: menuText,
+                    contextInfo: contextInfo
                 },
                 { quoted: mek }
             );
         } else {
             await conn.sendMessage(
                 from,
-                { text: menuText },
+                {
+                    text: menuText,
+                    contextInfo: contextInfo
+                },
                 { quoted: mek }
             );
         }
