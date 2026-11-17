@@ -123,8 +123,6 @@ cmd({
         let menuText = '';
 
         menuText += `╭━━〔 ${BOT_NAME} 〕━━╮\n`;
-        menuText += `┃\n`;
-        menuText += `┃  ʙᴏᴛ      : ${BOT_NAME}\n`;
         menuText += `┃  ᴏᴡɴᴇʀ    : ${OWNER_NAME}\n`;
         menuText += `┃  ᴄᴏᴍᴍᴀɴᴅꜱ : ${totalCommands}\n`;
         menuText += `┃  ʀᴜɴᴛɪᴍᴇ  : ${runtime(process.uptime())}\n`;
