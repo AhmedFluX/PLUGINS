@@ -1,4 +1,3 @@
-
 const config = require('../config')
 const { cmd, commands } = require('../command')
 const path = require('path')
@@ -82,7 +81,6 @@ async (conn, mek, m, {
             config.BOT_IMAGE ||
             config.BOT_MEDIA_URL
 
-        // AUTOMATIC COMMAND CATEGORIES
         const categories = [
             ...new Set(allCommands.map(c => c.category))
         ].filter(
@@ -102,7 +100,6 @@ async (conn, mek, m, {
             )
         }
 
-        // FINAL MENU
         const menu = `
 ╭━━〔 ${toSmallCaps(BOT_NAME)} 〕━━╮
 ┃
@@ -118,11 +115,9 @@ async (conn, mek, m, {
 ${menuSections}
 ${DESCRIPTION}
 
-> 𝐏ᴏᴡᴇʀᴇᴅ ʙʏ ${toSmallCaps(OWNER_NAME)} 💀🇦🇱
-© ${toSmallCaps(BOT_NAME)}
+*© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ*
 `
 
-        // BOT DP
         const localImage = path.join(
             __dirname,
             '../lib/ahmed.png'
@@ -138,7 +133,6 @@ ${DESCRIPTION}
             imageToUse = { url: BOT_IMAGE }
         }
 
-        // ORIGINAL BOT CHANNEL
         const contextInfo = {
             forwardingScore: 999,
             isForwarded: true,
@@ -149,7 +143,6 @@ ${DESCRIPTION}
             }
         }
 
-        // SEND MENU ONLY ONCE
         if (imageToUse) {
             await conn.sendMessage(from, {
                 image: imageToUse,
