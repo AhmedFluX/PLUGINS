@@ -1,59 +1,67 @@
+const { cmd } = require('../command')
 
-const { isAdmin, bot, jidToNum } = require('../lib/');
+cmd({
+    pattern: 'kik',
+    alias: [],
+    desc: 'Remove members from Group',
+    category: 'group',
+    filename: __filename
+}, async (conn, mek, m, context) => {
+    const { from, q, reply } = context
 
-const FOOTER = '\n\n*© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ*';
+    try {
+        if (!m.isGroup)
+            return reply('This command can only be used in groups.')
 
-bot(
-    {
-        pattern: 'kik ?(.*)',
-        fromMe: true,
-        desc: 'Remove members from Group.',
-        type: 'AHMII',
-        onlyGroup: true,
-    },
-    async (message, match) => {
-        if (!match)
-            return await message.send(
-                'kik 994\nkik 994 kick' + FOOTER
-            );
+        if (!q)
+            return reply('Example:\n.kik 994\n.kik 994 kick')
 
-        const participants = await message.groupMetadata(message.jid);
-        const isImAdmin = await isAdmin(
-            participants,
-            message.client.user.jid
-        );
+        const metadata = await conn.groupMetadata(from)
+        const participants = metadata.participants || []
+
+        const botJid = conn.user.id
+        const botParticipant = participants.find(
+            user => user.id === botJid ||
+            user.id.split(':')[0] === botJid.split(':')[0]
+        )
+
+        const isImAdmin = botParticipant?.admin === 'admin' ||
+            botParticipant?.admin === 'superadmin'
 
         if (!isImAdmin)
-            return await message.send(
-                "_I'm not admin._" + FOOTER
-            );
+            return reply("_I'm not admin._")
 
-        const kik = match.includes('kick');
+        let match = q.trim()
+        const kik = /\bkick\b/i.test(match)
 
-        if (kik) match = match.replace('kick', '').trim();
+        if (kik)
+            match = match.replace(/\bkick\b/i, '').trim()
 
         const users = participants
-            .filter((user) => user.id.startsWith(match))
-            .map(({ id }) => id);
+            .filter(user => {
+                const number = user.id.split('@')[0].split(':')[0]
+                return number.startsWith(match)
+            })
+            .map(user => user.id)
 
         if (!users.length)
-            return await message.send(
-                'No matching members found.' + FOOTER
-            );
+            return reply('No matching group members found.')
 
         if (kik) {
-            await message.Kick(users);
-            return await message.send(
-                'Member removal request completed.' + FOOTER
-            );
+            await conn.groupParticipantsUpdate(from, users, 'remove')
+            return reply(`Successfully removed ${users.length} member(s).`)
         }
 
-        let msg = '';
+        let msg = ''
 
         for (const user of users) {
-            msg += `○ ${jidToNum(user)}\n`;
+            msg += `○ ${user.split('@')[0]}\n`
         }
 
-        return await message.send(msg + FOOTER);
+        return reply(msg)
+
+    } catch (error) {
+        console.error('KIK ERROR:', error)
+        return reply('An error occurred while processing the command.')
     }
-);
+})
