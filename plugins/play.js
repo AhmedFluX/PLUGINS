@@ -1,134 +1,110 @@
-const { cmd } = require('../command');
-const fetch = (...args) =>
-  import('node-fetch').then(({ default: fetch }) => fetch(...args));
+
+const { bot } = require('../lib/');
+const fetch = (...args) => import('node-fetch').then(({ default: fetch }) => fetch(...args));
 
 const smallCaps = {
   a: 'ᴀ', b: 'ʙ', c: 'ᴄ', d: 'ᴅ', e: 'ᴇ',
   f: 'ꜰ', g: 'ɢ', h: 'ʜ', i: 'ɪ', j: 'ᴊ',
   k: 'ᴋ', l: 'ʟ', m: 'ᴍ', n: 'ɴ', o: 'ᴏ',
-  p: 'ᴘ', q: 'ǫ', r: 'ʀ', s: 'ꜱ', t: 'ᴛ',
+  p: 'ᴘ', q: 'Q', r: 'ʀ', s: 'ꜱ', t: 'ᴛ',
   u: 'ᴜ', v: 'ᴠ', w: 'ᴡ', x: 'x', y: 'ʏ',
   z: 'ᴢ'
 };
 
 function toStyled(text) {
-  return String(text).split(' ').map(word => {
+  return text.split(' ').map(word => {
     if (!word) return word;
-
     const first = word[0].toUpperCase();
-    const rest = word.slice(1).toLowerCase()
-      .split('')
-      .map(c => smallCaps[c] || c)
-      .join('');
-
+    const rest = word.slice(1).toLowerCase().split('').map(c => smallCaps[c] || c).join('');
     return first + rest;
   }).join(' ');
 }
 
-const editMessage = async (conn, mek, newText) => {
+const editMessage = async (message, msg, newText) => {
   try {
-    await conn.sendMessage(mek.key.remoteJid, {
-      text: newText,
-      edit: mek.key
-    });
+    await message.send(
+      { key: msg.key, text: newText },
+      {},
+      'edit'
+    );
   } catch (err) {
-    console.log('AHMED-MD Edit Error:', err);
+    console.log("Edit error:", err);
   }
 };
 
-cmd(
+bot(
   {
-    pattern: 'play',
-    alias: ['song'],
-    desc: 'Download and Play Music',
-    category: 'download',
-    filename: __filename
+    pattern: 'play ?(.*)',
+    desc: 'Play Music Using AHMED-MD API 🚀',
+    type: 'misc',
   },
-  async (conn, mek, m, context) => {
-    const { q, reply } = context;
-
-    const query = q || (
-      m.quoted && m.quoted.text
-    );
+  async (message, match) => {
+    const query = match || (message.reply_message && message.reply_message.text);
 
     if (!query) {
-      return reply(
+      return await message.send(
         toStyled('Enter The Song Name Ex: Play Saiyaara Song')
       );
     }
 
-    const statusMsg = await conn.sendMessage(
-      m.chat,
-      { text: toStyled(`🔍 Searching ៚ ${query} ...`) },
-      { quoted: mek }
+    const statusMsg = await message.send(
+      toStyled(`*🔍 Searching ៚ ${query} ...*`)
     );
 
-    const apiUrl =
-      `https://api.sayan-nexuswork.workers.dev/music?query=${encodeURIComponent(query.trim())}`;
+    const apiUrl = `https://api.sayan-nexuswork.workers.dev/music?query=${encodeURIComponent(query.trim())}`;
 
     try {
       const response = await fetch(apiUrl);
-
-      if (!response.ok) {
-        throw new Error('Music API request failed');
-      }
-
       const data = await response.json();
 
       if (data.status === 'success' && data.url) {
 
         await editMessage(
-          conn,
+          message,
           statusMsg,
-          toStyled(`⬇️ Downloading ៚ ${data.title} ...`)
+          toStyled(`*⬇️ Downloading ៚ ${data.title} ...*`)
         );
 
         const audioResponse = await fetch(data.url, {
           headers: {
-            'User-Agent': 'Mozilla/5.0',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
             'Referer': 'https://www.youtube.com'
           }
         });
 
-        if (!audioResponse.ok) {
-          throw new Error('Audio download failed');
-        }
+        if (!audioResponse.ok) throw new Error('Audio download failed');
 
         const arrayBuffer = await audioResponse.arrayBuffer();
         const audioBuffer = Buffer.from(arrayBuffer);
 
         await editMessage(
-          conn,
+          message,
           statusMsg,
-          toStyled(`🎧 Playing ៚ ${data.title} ...`)
+          toStyled(`*🎧 Playing ៚ ${data.title} ...*`)
         );
 
-        await conn.sendMessage(
-          m.chat,
+        await message.send(
+          audioBuffer,
           {
-            audio: audioBuffer,
             mimetype: 'audio/mpeg',
-            fileName: `${data.title || 'AHMED-MD'}.mp3`,
+            fileName: `${data.title}-AHMED-MD.mp3`,
             ptt: false
           },
-          { quoted: mek }
+          'audio'
         );
 
+        await message.send('*© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ*');
+
       } else {
-        await editMessage(
-          conn,
-          statusMsg,
-          toStyled('🛠️ Music Not Found Or Server Is Busy!')
+        await message.send(
+          toStyled('*🛠️ Our Server Is Facing A Small Issue Right Now....*')
         );
       }
 
     } catch (error) {
-      console.error('AHMED-MD PLAY ERROR:', error);
-
-      await editMessage(
-        conn,
-        statusMsg,
-        toStyled('There Is A Problem With The Server Right Now!')
+      console.error(error);
+      await message.send(
+        toStyled('*There Is A Problem With The Server Right Now.....*')
       );
     }
   }
