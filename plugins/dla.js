@@ -1,367 +1,1686 @@
 
-// dla.js - AHMED-MD Media Downloader
-// Original author: Weskerty
-// License: AGPLv3
+const fs = require('fs').promises
+const path = require('path')
+const os = require('os')
+const { promisify } = require('util')
+const { execFile } = require('child_process')
+const { cmd } = require('../command')
+const { downloadMediaMessage } = require('../lib')
 
-const fs = require('fs').promises;
-const path = require('path');
-const os = require('os');
-const { promisify } = require('util');
-const { execFile } = require('child_process');
-const { bot, isUrl } = require('../lib');
+const execFileAsync = promisify(execFile)
 
-const execFileAsync = promisify(execFile);
-const FOOTER = '\n\n*© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ*';
-
-let dependenciesReady = false;
-let dependencyError = null;
-let ffmpegPath = 'ffmpeg';
+let dependenciesReady = false
+let dependencyError = null
+let ffmpegPath = 'ffmpeg'
 
 const log = {
-  info: (...a) => console.log('[DLA]', ...a),
-  error: (...a) => console.error('[DLA]', ...a),
-};
+    info: (...a) => console.log('[DLA]', ...a),
+    error: (...a) => console.error('[DLA]', ...a)
+}
+
+const TIMEOUT_MS = 500000
 
 const QUALITY_PRESETS = new Map([
-  ['360', { height: 360, label: '360p' }],
-  ['480', { height: 480, label: '480p (SD)' }],
-  ['sd', { height: 480, label: '480p (SD)' }],
-  ['720', { height: 720, label: '720p (HD)' }],
-  ['hd', { height: 720, label: '720p (HD)' }],
-  ['1080', { height: 1080, label: '1080p (FHD)' }],
-  ['fhd', { height: 1080, label: '1080p (FHD)' }],
-  ['1440', { height: 1440, label: '1440p (2K)' }],
-  ['2k', { height: 1440, label: '1440p (2K)' }],
-  ['2160', { height: 2160, label: '2160p (4K)' }],
-  ['4k', { height: 2160, label: '2160p (4K)' }],
-  ['best', { height: null, label: 'Best available' }],
-]);
+    ['360', { height: 360, label: '360p' }],
+    ['480', { height: 480, label: '480p (SD)' }],
+    ['sd', { height: 480, label: '480p (SD)' }],
+    ['720', { height: 720, label: '720p (HD)' }],
+    ['hd', { height: 720, label: '720p (HD)' }],
+    ['1080', { height: 1080, label: '1080p (FHD)' }],
+    ['fhd', { height: 1080, label: '1080p (FHD)' }],
+    ['1440', { height: 1440, label: '1440p (2K)' }],
+    ['2k', { height: 1440, label: '1440p (2K)' }],
+    ['2160', { height: 2160, label: '2160p (4K)' }],
+    ['4k', { height: 2160, label: '2160p (4K)' }],
+    ['best', { height: null, label: 'Best available' }]
+])
 
 const parseQuality = token =>
-  token ? QUALITY_PRESETS.get(token.toLowerCase()) || null : null;
+    token ? QUALITY_PRESETS.get(token.toLowerCase()) || null : null
 
 const FILE_TYPES = {
-  video: {
-    extensions: new Set(['mp4', 'mkv', 'avi', 'webm', 'mov', 'flv', 'm4v']),
-    mimetype: 'video/mp4',
-  },
-  image: {
-    extensions: new Set(['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp', 'tiff', 'svg']),
-    mimetype: 'image/jpeg',
-  },
-  document: {
-    extensions: new Set([
-      'pdf', 'epub', 'docx', 'txt', 'apk', 'apks', 'zip', 'rar',
-      'iso', 'ini', 'cbr', 'cbz', 'torrent', 'json', 'xml', 'html',
-      'css', 'js', 'csv', 'xls', 'xlsx', 'ppt', 'pptx',
-    ]),
-    mimetypes: new Map([
-      ['pdf', 'application/pdf'],
-      ['epub', 'application/epub+zip'],
-      ['docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
-      ['txt', 'text/plain'],
-      ['apk', 'application/vnd.android.package-archive'],
-      ['apks', 'application/vnd.android.package-archive'],
-      ['zip', 'application/zip'],
-      ['rar', 'application/x-rar-compressed'],
-      ['iso', 'application/x-iso9660-image'],
-      ['ini', 'text/plain'],
-      ['cbr', 'application/x-cbr'],
-      ['cbz', 'application/x-cbz'],
-      ['torrent', 'application/x-bittorrent'],
-      ['json', 'application/json'],
-      ['xml', 'application/xml'],
-      ['html', 'text/html'],
-      ['css', 'text/css'],
-      ['js', 'application/javascript'],
-      ['csv', 'text/csv'],
-      ['xls', 'application/vnd.ms-excel'],
-      ['xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
-      ['ppt', 'application/vnd.ms-powerpoint'],
-      ['pptx', 'application/vnd.openxmlformats-officedocument.presentationml.presentation'],
-    ]),
-    defaultMimetype: 'application/octet-stream',
-  },
-  audio: {
-    extensions: new Set(['mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac', 'wma']),
-    mimetype: 'audio/mpeg',
-  },
-};
-
-const TIMEOUT_MS = 500000;
+    video: {
+        extensions: new Set([
+            'mp4', 'mkv', 'avi', 'webm', 'mov', 'flv', 'm4v'
+        ]),
+        mimetype: 'video/mp4'
+    },
+    image: {
+        extensions: new Set([
+            'jpg', 'jpeg', 'png', 'gif', 'webp',
+            'bmp', 'tiff', 'svg'
+        ]),
+        mimetype: 'image/jpeg'
+    },
+    document: {
+        extensions: new Set([
+            'pdf', 'epub', 'docx', 'txt', 'apk', 'apks',
+            'zip', 'rar', 'iso', 'ini', 'cbr', 'cbz',
+            'torrent', 'json', 'xml', 'html', 'css', 'js',
+            'csv', 'xls', 'xlsx', 'ppt', 'pptx'
+        ]),
+        mimetypes: new Map([
+            ['pdf', 'application/pdf'],
+            ['epub', 'application/epub+zip'],
+            ['docx', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'],
+            ['txt', 'text/plain'],
+            ['apk', 'application/vnd.android.package-archive'],
+            ['apks', 'application/vnd.android.package-archive'],
+            ['zip', 'application/zip'],
+            ['rar', 'application/x-rar-compressed'],
+            ['iso', 'application/x-iso9660-image'],
+            ['ini', 'text/plain'],
+            ['cbr', 'application/x-cbr'],
+            ['cbz', 'application/x-cbz'],
+            ['torrent', 'application/x-bittorrent'],
+            ['json', 'application/json'],
+            ['xml', 'application/xml'],
+            ['html', 'text/html'],
+            ['css', 'text/css'],
+            ['js', 'application/javascript'],
+            ['csv', 'text/csv'],
+            ['xls', 'application/vnd.ms-excel'],
+            ['xlsx', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'],
+            ['ppt', 'application/vnd.ms-powerpoint'],
+            ['pptx', 'application/vnd.openxmlformats-officedocument.presentationml.presentation']
+        ]),
+        defaultMimetype: 'application/octet-stream'
+    },
+    audio: {
+        extensions: new Set([
+            'mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac', 'wma'
+        ]),
+        mimetype: 'audio/mpeg'
+    }
+}
 
 function withTimeout(promise, ms = TIMEOUT_MS, errorMsg = 'Operation timeout') {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) =>
-      setTimeout(() => reject(new Error(errorMsg)), ms)
-    ),
-  ]);
+    let timer
+
+    return Promise.race([
+        promise,
+        new Promise((_, reject) => {
+            timer = setTimeout(() => reject(new Error(errorMsg)), ms)
+        })
+    ]).finally(() => clearTimeout(timer))
 }
 
 function getFileDetails(filePath) {
-  const ext = path.extname(filePath).slice(1).toLowerCase();
+    const ext = path.extname(filePath).slice(1).toLowerCase()
 
-  for (const [category, typeInfo] of Object.entries(FILE_TYPES)) {
-    if (typeInfo.extensions.has(ext)) {
-      return {
-        category,
-        mimetype: category === 'document'
-          ? typeInfo.mimetypes.get(ext) || typeInfo.defaultMimetype
-          : typeInfo.mimetype,
-      };
+    for (const [category, typeInfo] of Object.entries(FILE_TYPES)) {
+        if (typeInfo.extensions.has(ext)) {
+            return {
+                category,
+                mimetype: category === 'document'
+                    ? typeInfo.mimetypes.get(ext) || typeInfo.defaultMimetype
+                    : typeInfo.mimetype
+            }
+        }
     }
-  }
 
-  return {
-    category: 'document',
-    mimetype: FILE_TYPES.document.defaultMimetype,
-  };
+    return {
+        category: 'document',
+        mimetype: FILE_TYPES.document.defaultMimetype
+    }
 }
 
 function getYtDlpBinaryName() {
-  const p = os.platform();
-  const a = os.arch();
+    const p = os.platform()
+    const a = os.arch()
 
-  const m = new Map([
-    ['win32-x64', 'yt-dlp.exe'],
-    ['win32-ia32', 'yt-dlp_x86.exe'],
-    ['darwin', 'yt-dlp_macos'],
-    ['linux-x64', 'yt-dlp_linux'],
-    ['linux-arm64', 'yt-dlp_linux_aarch64'],
-    ['linux-arm', 'yt-dlp_linux_armv7l'],
-  ]);
+    const binaries = new Map([
+        ['win32-x64', 'yt-dlp.exe'],
+        ['win32-ia32', 'yt-dlp_x86.exe'],
+        ['darwin', 'yt-dlp_macos'],
+        ['linux-x64', 'yt-dlp_linux'],
+        ['linux-arm64', 'yt-dlp_linux_aarch64'],
+        ['linux-arm', 'yt-dlp_linux_armv7l']
+    ])
 
-  return m.get(`${p}-${a}`) || m.get(p) || 'yt-dlp';
+    return binaries.get(`${p}-${a}`) || binaries.get(p) || 'yt-dlp'
 }
 
 function getFfmpegBinaryName() {
-  const a = os.arch();
-  return ({ x64: 'amd64', arm64: 'arm64', arm: 'armhf' })[a] || null;
+    return ({
+        x64: 'amd64',
+        arm64: 'arm64',
+        arm: 'armhf'
+    })[os.arch()] || null
 }
 
 async function checkBinaryAvailable(name, flag = '--version') {
-  try {
-    await execFileAsync(name, [flag], { timeout: 15000 });
-    return true;
-  } catch {
-    return false;
-  }
+    try {
+        await execFileAsync(name, [flag], { timeout: 15000 })
+        return true
+    } catch {
+        return false
+    }
 }
 
 async function downloadStaticFfmpeg(binDir) {
-  if (os.platform() !== 'linux') return null;
+    if (os.platform() !== 'linux') return null
 
-  const arch = getFfmpegBinaryName();
-  if (!arch) return null;
+    const arch = getFfmpegBinaryName()
+    if (!arch) return null
 
-  const url = `https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-${arch}-static.tar.xz`;
-  const tarPath = path.join(binDir, 'ffmpeg-static.tar.xz');
+    const url =
+        `https://johnvansickle.com/ffmpeg/releases/ffmpeg-release-${arch}-static.tar.xz`
 
-  try {
-    log.info('Downloading static ffmpeg...');
+    const tarPath = path.join(binDir, 'ffmpeg-static.tar.xz')
 
-    const fetch = (await import('node-fetch')).default;
-    const res = await withTimeout(
-      fetch(url),
-      120000,
-      'Timeout downloading ffmpeg'
-    );
+    try {
+        log.info('Downloading static ffmpeg...')
 
-    if (!res.ok) throw new Error(`FFmpeg download failed: ${res.statusText}`);
-
-    await fs.writeFile(
-      tarPath,
-      Buffer.from(
-        await withTimeout(
-          res.arrayBuffer(),
-          120000,
-          'Timeout reading ffmpeg'
+        const res = await withTimeout(
+            fetch(url),
+            120000,
+            'Timeout downloading ffmpeg'
         )
-      )
-    );
 
-    const { stdout } = await execFileAsync(
-      'tar',
-      ['tf', tarPath],
-      { timeout: 30000, maxBuffer: 1024 * 1024 }
-    );
+        if (!res.ok) {
+            throw new Error(`FFmpeg download failed: ${res.statusText}`)
+        }
 
-    const entry = stdout
-      .split('\n')
-      .find(e => e.endsWith('/ffmpeg') || e === 'ffmpeg');
+        const buffer = Buffer.from(
+            await withTimeout(
+                res.arrayBuffer(),
+                120000,
+                'Timeout reading ffmpeg'
+            )
+        )
 
-    if (!entry) throw new Error('ffmpeg not found in tarball');
+        await fs.writeFile(tarPath, buffer)
 
-    const strip = entry.split('/').length - 1;
+        const { stdout } = await execFileAsync(
+            'tar',
+            ['tf', tarPath],
+            { timeout: 30000, maxBuffer: 1024 * 1024 }
+        )
 
-    await execFileAsync(
-      'tar',
-      ['xf', tarPath, '-C', binDir, `--strip-components=${strip}`, entry],
-      { timeout: 60000, cwd: binDir }
-    );
+        const entry = stdout
+            .split('\n')
+            .find(e => e.endsWith('/ffmpeg') || e === 'ffmpeg')
 
-    const bin = path.join(binDir, 'ffmpeg');
+        if (!entry) {
+            throw new Error('ffmpeg not found in tarball')
+        }
 
-    await fs.chmod(bin, '755');
-    await fs.unlink(tarPath).catch(() => {});
-    await execFileAsync(bin, ['-version'], { timeout: 15000 });
+        const strip = entry.split('/').length - 1
 
-    log.info('Static ffmpeg installed');
-    return bin;
-  } catch (err) {
-    log.error('Static ffmpeg failed:', err.message);
-    await fs.unlink(tarPath).catch(() => {});
-    return null;
-  }
+        await execFileAsync(
+            'tar',
+            [
+                'xf',
+                tarPath,
+                '-C',
+                binDir,
+                `--strip-components=${strip}`,
+                entry
+            ],
+            { timeout: 60000, cwd: binDir }
+        )
+
+        const bin = path.join(binDir, 'ffmpeg')
+
+        await fs.chmod(bin, 0o755)
+        await fs.unlink(tarPath).catch(() => {})
+        await execFileAsync(bin, ['-version'], { timeout: 15000 })
+
+        log.info('Static ffmpeg installed')
+        return bin
+    } catch (err) {
+        log.error('Static ffmpeg failed:', err.message)
+        await fs.unlink(tarPath).catch(() => {})
+        return null
+    }
 }
 
 async function initDependencies() {
-  const binDir = path.join(process.cwd(), 'media', 'bin');
+    const binDir = path.join(process.cwd(), 'media', 'bin')
 
-  await fs.mkdir(binDir, { recursive: true });
+    await fs.mkdir(binDir, { recursive: true })
 
-  const errors = [];
+    const errors = []
 
-  log.info('Checking dependencies...');
+    log.info('Checking dependencies...')
 
-  let ytOk = await checkBinaryAvailable('yt-dlp');
+    let ytOk = await checkBinaryAvailable('yt-dlp')
 
-  if (ytOk) {
-    log.info('yt-dlp found on PATH');
-  } else {
-    const local = path.join(binDir, getYtDlpBinaryName());
+    if (ytOk) {
+        log.info('yt-dlp found on PATH')
+    } else {
+        const local = path.join(binDir, getYtDlpBinaryName())
 
-    try {
-      await fs.access(local);
-      await execFileAsync(local, ['--version'], { timeout: 15000 });
+        try {
+            await fs.access(local)
+            await execFileAsync(local, ['--version'], { timeout: 15000 })
 
-      ytOk = true;
-      log.info(`yt-dlp found locally: ${local}`);
-    } catch {
-      try {
-        log.info('Downloading yt-dlp...');
+            ytOk = true
+            log.info(`yt-dlp found locally: ${local}`)
+        } catch {
+            try {
+                log.info('Downloading yt-dlp...')
 
-        const fetch = (await import('node-fetch')).default;
+                const res = await withTimeout(
+                    fetch(
+                        `https://github.com/yt-dlp/yt-dlp/releases/latest/download/${getYtDlpBinaryName()}`
+                    ),
+                    TIMEOUT_MS,
+                    'Timeout downloading yt-dlp'
+                )
 
-        const res = await withTimeout(
-          fetch(`https://github.com/yt-dlp/yt-dlp/releases/latest/download/${getYtDlpBinaryName()}`),
-          TIMEOUT_MS,
-          'Timeout'
-        );
+                if (!res.ok) {
+                    throw new Error(res.statusText)
+                }
 
-        if (!res.ok) throw new Error(res.statusText);
+                const buffer = Buffer.from(
+                    await withTimeout(
+                        res.arrayBuffer(),
+                        TIMEOUT_MS,
+                        'Timeout reading yt-dlp'
+                    )
+                )
 
-        await fs.writeFile(
-          local,
-          Buffer.from(
-            await withTimeout(res.arrayBuffer(), TIMEOUT_MS, 'Timeout')
-          )
-        );
+                await fs.writeFile(local, buffer)
 
-        if (os.platform() !== 'win32') {
-          await fs.chmod(local, '755');
+                if (os.platform() !== 'win32') {
+                    await fs.chmod(local, 0o755)
+                }
+
+                await execFileAsync(local, ['--version'], { timeout: 15000 })
+
+                ytOk = true
+                log.info('yt-dlp downloaded')
+            } catch (err) {
+                errors.push(`*yt-dlp:* Could not install — ${err.message}`)
+                log.error('yt-dlp install failed:', err.message)
+            }
         }
-
-        await execFileAsync(local, ['--version'], { timeout: 15000 });
-
-        ytOk = true;
-        log.info('yt-dlp downloaded');
-      } catch (err) {
-        errors.push(`*yt-dlp:* Could not install — ${err.message}`);
-        log.error('yt-dlp install failed:', err.message);
-      }
     }
-  }
 
-  let ffOk = await checkBinaryAvailable('ffmpeg', '-version');
+    let ffOk = await checkBinaryAvailable('ffmpeg', '-version')
 
-  if (ffOk) {
-    ffmpegPath = 'ffmpeg';
-    log.info('ffmpeg found on PATH');
-  } else {
-    const local = path.join(binDir, 'ffmpeg');
+    if (ffOk) {
+        ffmpegPath = 'ffmpeg'
+        log.info('ffmpeg found on PATH')
+    } else {
+        const local = path.join(binDir, 'ffmpeg')
 
-    try {
-      await fs.access(local);
-      await execFileAsync(local, ['-version'], { timeout: 15000 });
+        try {
+            await fs.access(local)
+            await execFileAsync(local, ['-version'], { timeout: 15000 })
 
-      ffOk = true;
-      ffmpegPath = local;
+            ffOk = true
+            ffmpegPath = local
 
-      log.info(`ffmpeg found locally: ${local}`);
-    } catch {
-      const staticPath = await downloadStaticFfmpeg(binDir);
+            log.info(`ffmpeg found locally: ${local}`)
+        } catch {
+            const staticPath = await downloadStaticFfmpeg(binDir)
 
-      if (staticPath) {
-        ffOk = true;
-        ffmpegPath = staticPath;
-        log.info(`ffmpeg static installed: ${staticPath}`);
-      } else {
-        errors.push('*ffmpeg:* Could not install — static binary download failed.');
-        log.error('ffmpeg install failed');
-      }
+            if (staticPath) {
+                ffOk = true
+                ffmpegPath = staticPath
+
+                log.info(`ffmpeg static installed: ${staticPath}`)
+            } else {
+                errors.push(
+                    '*ffmpeg:* Could not install — static binary download failed.'
+                )
+                log.error('ffmpeg install failed')
+            }
+        }
     }
-  }
 
-  if (errors.length > 0) {
-    dependenciesReady = false;
-    dependencyError = errors.join('\n');
-    log.error('Dependencies INCOMPLETE\n' + errors.join('\n'));
-  } else {
-    dependenciesReady = true;
-    log.info(
-      `All dependencies ready (ffmpeg: ${ffmpegPath === 'ffmpeg' ? 'system' : 'local'})`
-    );
-  }
+    if (errors.length > 0) {
+        dependenciesReady = false
+        dependencyError = errors.join('\n')
+
+        log.error('Dependencies INCOMPLETE\n' + dependencyError)
+    } else {
+        dependenciesReady = true
+        dependencyError = null
+
+        log.info(
+            `All dependencies ready (ffmpeg: ${ffmpegPath === 'ffmpeg' ? 'system' : 'local'})`
+        )
+    }
 }
 
 function getUnavailableMessage() {
-  return '⚠️ *DLA Unavailable*\n\n' +
-    'Required dependencies could not be installed:\n' +
-    `${dependencyError}\n\n` +
-    '> Check network connectivity or install manually:\n' +
-    '> `apt-get install -y ffmpeg yt-dlp`' +
-    FOOTER;
+    return (
+        '⚠️ *DLA Unavailable*\n\n' +
+        'Required dependencies could not be installed:\n' +
+        `${dependencyError || 'Unknown dependency error'}\n\n` +
+        '> Check network connectivity or install manually:\n' +
+        '> `apt-get install -y ffmpeg yt-dlp`'
+    )
 }
 
 initDependencies().catch(err => {
-  dependenciesReady = false;
-  dependencyError = `Unexpected error during setup: ${err.message}`;
-  log.error('initDependencies crashed:', err);
-});
+    dependenciesReady = false
+    dependencyError = `Unexpected error during setup: ${err.message}`
+
+    log.error('initDependencies crashed:', err)
+})
 
 class DownloadQueue {
-  constructor(maxConcurrent = 2) {
-    this.queue = [];
-    this.activeDownloads = 0;
-    this.maxConcurrent = maxConcurrent;
-    this.isProcessing = false;
-  }
+    constructor(maxConcurrent = 2) {
+        this.queue = []
+        this.activeDownloads = 0
+        this.maxConcurrent = maxConcurrent
+        this.isProcessing = false
+    }
 
-  async add(task) {
-    return new Promise((resolve, reject) => {
-      this.queue.push({ task, resolve, reject });
-      this.processNext();
-    });
-  }
+    async add(task) {
+        return new Promise((resolve, reject) => {
+            this.queue.push({ task, resolve, reject })
+            this.processNext()
+        })
+    }
 
-  async processNext() {
-    if (this.isProcessing) return;
+    async processNext() {
+        if (this.isProcessing) return
 
-    this.isProcessing = true;
+        this.isProcessing = true
+
+        try {
+            while (
+                this.activeDownloads < this.maxConcurrent &&
+                this.queue.length > 0
+            ) {
+                const { task, resolve, reject } = this.queue.shift()
+
+                this.activeDownloads++
+
+                task()
+                    .then(resolve)
+                    .catch(reject)
+                    .finally(() => {
+                        this.activeDownloads--
+                        setImmediate(() => this.processNext())
+                    })
+            }
+        } finally {
+            this.isProcessing = false
+        }
+    }
+}
+
+class MediaDownloader {
+    constructor() {
+        this.ctx = null
+        this.ytDlpBinaryPath = null
+        this.presetFormats = null
+        this.downloadQueue = new DownloadQueue(2)
+
+        this.defaultFormats = {
+            video: [
+                '-f',
+                'sd/18/bestvideo[height<=720][vcodec*=h264]+bestaudio[acodec*=aac]/bestvideo[height<=720][vcodec*=h264]+bestaudio[acodec*=mp4a]/bestvideo[height<=720][vcodec*=h264]+bestaudio/bestvideo[height<=720]+bestaudio/bestvideo[vcodec*=h264]+bestaudio[acodec*=aac]/bestvideo[vcodec*=h264]+bestaudio[acodec*=mp4a]/bestvideo[vcodec*=h264]+bestaudio/bestvideo+bestaudio/best',
+                '--sponsorblock-remove',
+                'all',
+                '--embed-chapters',
+                '--add-metadata'
+            ],
+            audio: [
+                '-f', 'ba/best',
+                '-x',
+                '--audio-format', 'mp3',
+                '--audio-quality', '0',
+                '--sponsorblock-remove', 'all',
+                '--embed-thumbnail',
+                '--add-metadata',
+                '--postprocessor-args',
+                'ffmpeg:-id3v2_version 3'
+            ],
+            playlist: ['--yes-playlist'],
+            noPlaylist: ['--no-playlist']
+        }
+    }
+
+    setContext(ctx = {}) {
+        this.ctx = ctx
+        this.presetFormats = null
+
+        this.config = {
+            tempDir: process.env.TEMP_DOWNLOAD_DIR ||
+                path.join(process.cwd(), 'temp'),
+
+            maxFileSize:
+                (parseInt(process.env.MAX_UPLOAD, 10) * 1048576) ||
+                1500000000,
+
+            ytDlpPath: path.join(process.cwd(), 'media', 'bin'),
+
+            maxConcurrent:
+                parseInt(process.env.MAXSOLICITUD, 10) || 2,
+
+            playlistLimit:
+                parseInt(process.env.PLAYLIST_LIMIT, 10) || 20,
+
+            cookies: process.env.COOKIES || null,
+
+            maxPreviewSize:
+                (parseInt(process.env.DLA_MAX_PREVIEW, 10) || 30) *
+                1024 * 1024,
+
+            enableMp3Zip:
+                process.env.DLAMP3ZIP === undefined ||
+                process.env.DLAMP3ZIP === 'TRUE' ||
+                process.env.DLAMP3ZIP === 'true',
+
+            dlaVideo: process.env.DLA_VIDEO || null,
+            dlaAudio: process.env.DLA_AUDIO || null,
+            dlaYtCmd: process.env.DLA_YTCMD || null,
+            dlaExtDown: process.env.DLA_EXTDOWN || null
+        }
+
+        this.downloadQueue.maxConcurrent = this.config.maxConcurrent
+    }
+
+    getFormats() {
+        if (this.presetFormats) return this.presetFormats
+
+        this.presetFormats = {
+            video: this.config.dlaVideo
+                ? this.config.dlaVideo.trim().split(/\s+/)
+                : this.defaultFormats.video,
+
+            audio: this.config.dlaAudio
+                ? this.config.dlaAudio.trim().split(/\s+/)
+                : this.defaultFormats.audio,
+
+            playlist: this.defaultFormats.playlist,
+            noPlaylist: this.defaultFormats.noPlaylist
+        }
+
+        return this.presetFormats
+    }
+
+    getVideoFormatArgs(quality) {
+        if (this.config.dlaVideo) {
+            return this.config.dlaVideo.trim().split(/\s+/)
+        }
+
+        if (!quality || !quality.height) {
+            return [
+                '-f',
+                'bv*+ba/b',
+                '-S',
+                'codec:h264',
+                '--sponsorblock-remove',
+                'all',
+                '--embed-chapters',
+                '--add-metadata'
+            ]
+        }
+
+        const h = quality.height
+
+        return [
+            '-f',
+            `bv*[height<=${h}][vcodec*=h264]+ba[acodec*=aac]/bv*[height<=${h}][vcodec*=h264]+ba/bv*[height<=${h}]+ba/bv*+ba/b`,
+            '-S',
+            `res:${h},codec:h264`,
+            '--sponsorblock-remove',
+            'all',
+            '--embed-chapters',
+            '--add-metadata'
+        ]
+    }
+
+    getCommonArgs() {
+        if (this.config.dlaYtCmd) {
+            return this.config.dlaYtCmd
+                .match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g)
+                .map(s => s.replace(/^["']|["']$/g, ''))
+        }
+
+        return [
+            '--cache-dir',
+            path.join(this.config.ytDlpPath, 'cache'),
+            '--no-part',
+            '--no-mtime',
+            '--min-sleep-interval',
+            '5',
+            '--max-sleep-interval',
+            '20'
+        ]
+    }
+
+    getFfmpegLocationArgs() {
+        return ffmpegPath !== 'ffmpeg'
+            ? ['--ffmpeg-location', path.dirname(ffmpegPath)]
+            : []
+    }
+
+    getAria2Args() {
+        if (this.config.dlaExtDown) {
+            return this.config.dlaExtDown
+                .match(/(?:[^\s"']+|"[^"]*"|'[^']*')+/g)
+                .map(s => s.replace(/^["']|["']$/g, ''))
+        }
+
+        return [
+            '--external-downloader',
+            'aria2c',
+            '--external-downloader-args',
+            'aria2c:-x 16 -k 1M -j 16 --file-allocation=none --async-dns=false --optimize-concurrent-downloads=true --max-tries=5 --retry-wait=3'
+        ]
+    }
+
+    normalizeTimeSegment(segment) {
+        const parts = segment.split(':')
+
+        if (parts.length === 2) {
+            const [min, sec] = parts
+
+            return `00:${min.padStart(2, '0')}:${sec.padStart(2, '0')}`
+        }
+
+        if (parts.length === 3) {
+            const [h, m, s] = parts
+
+            return `${h.padStart(2, '0')}:${m.padStart(2, '0')}:${s.padStart(2, '0')}`
+        }
+
+        return segment
+    }
+
+    parseTimeRanges(timeString) {
+        if (!timeString?.trim()) return null
+
+        const ranges = timeString.split(/\s+|,/).filter(r => r.trim())
+        const normalized = []
+
+        for (const range of ranges) {
+            if (range.includes('-')) {
+                const [start, end] = range.split('-')
+
+                normalized.push(
+                    `*${this.normalizeTimeSegment(start.trim())}-${this.normalizeTimeSegment(end.trim())}`
+                )
+            }
+        }
+
+        return normalized.length > 0 ? normalized.join(',') : null
+    }
+
+    buildCookiesArgs() {
+        const cookiesPath = path.join(
+            this.config.ytDlpPath,
+            'yt-dlp.cookies.txt'
+        )
+
+        try {
+            require('fs').accessSync(
+                cookiesPath,
+                require('fs').constants.F_OK
+            )
+
+            return ['--cookies', cookiesPath]
+        } catch {
+            return this.config.cookies
+                ? ['--cookies', this.config.cookies]
+                : []
+        }
+    }
+
+    async checkZipAvailable() {
+        try {
+            await execFileAsync('which', ['zip'], { timeout: 5000 })
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    async compressWithZip(outputDir) {
+        const outputZip = path.join(
+            this.config.tempDir,
+            `playlist_${Date.now()}.zip`
+        )
+
+        const files = await withTimeout(
+            fs.readdir(outputDir),
+            TIMEOUT_MS,
+            'Timeout reading directory for zip'
+        )
+
+        await withTimeout(
+            execFileAsync(
+                'zip',
+                ['-r', outputZip, ...files],
+                {
+                    cwd: outputDir,
+                    maxBuffer: 1024 * 1024 * 100
+                }
+            ),
+            TIMEOUT_MS,
+            'Timeout creating zip file'
+        )
+
+        return outputZip
+    }
+
+    async safeExecuteYtDlp(args) {
+        if (!this.ytDlpBinaryPath) {
+            throw new Error('yt-dlp binary is not available')
+        }
+
+        return execFileAsync(
+            this.ytDlpBinaryPath,
+            [...this.getFfmpegLocationArgs(), ...args],
+            {
+                maxBuffer: 1024 * 1024 * 100,
+                timeout: TIMEOUT_MS
+            }
+        )
+    }
+
+    async isYtDlpAvailable() {
+        try {
+            await withTimeout(
+                execFileAsync('yt-dlp', ['--version']),
+                TIMEOUT_MS,
+                'Timeout'
+            )
+
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    async ensureDirectories() {
+        await Promise.all([
+            withTimeout(
+                fs.mkdir(this.config.tempDir, { recursive: true }),
+                TIMEOUT_MS,
+                'Timeout creating temp directory'
+            ),
+            withTimeout(
+                fs.mkdir(this.config.ytDlpPath, { recursive: true }),
+                TIMEOUT_MS,
+                'Timeout creating yt-dlp directory'
+            )
+        ])
+    }
+
+    async detectYtDlpBinary() {
+        if (this.ytDlpBinaryPath) return this.ytDlpBinaryPath
+
+        if (await this.isYtDlpAvailable()) {
+            this.ytDlpBinaryPath = 'yt-dlp'
+            return this.ytDlpBinaryPath
+        }
+
+        const filePath = path.join(
+            this.config.ytDlpPath,
+            getYtDlpBinaryName()
+        )
+
+        try {
+            await withTimeout(
+                fs.access(filePath),
+                TIMEOUT_MS,
+                'Timeout checking yt-dlp'
+            )
+
+            await execFileAsync(filePath, ['--version'], { timeout: 15000 })
+
+            this.ytDlpBinaryPath = filePath
+            return this.ytDlpBinaryPath
+        } catch {
+            throw new Error(
+                'yt-dlp binary not found. Restart the bot to retry installation.'
+            )
+        }
+    }
+
+    async loadInfoJson(outputDir) {
+        const files = await withTimeout(
+            fs.readdir(outputDir),
+            TIMEOUT_MS,
+            'Timeout reading directory for info.json'
+        )
+
+        const jsonFiles = files.filter(f => f.endsWith('.info.json'))
+        const infoMap = new Map()
+        let genericInfo = null
+
+        for (const jsonFile of jsonFiles) {
+            try {
+                const data = JSON.parse(
+                    await withTimeout(
+                        fs.readFile(path.join(outputDir, jsonFile), 'utf8'),
+                        TIMEOUT_MS,
+                        'Timeout'
+                    )
+                )
+
+                const baseName = jsonFile.replace('.info.json', '')
+
+                const mediaFiles = files.filter(
+                    f =>
+                        f.substring(0, f.lastIndexOf('.')) === baseName &&
+                        !f.endsWith('.info.json')
+                )
+
+                if (mediaFiles.length > 0) {
+                    for (const mf of mediaFiles) {
+                        infoMap.set(mf, {
+                            title: data.title || '',
+                            description: data.description || '',
+                            uploader: data.uploader || ''
+                        })
+                    }
+                } else if (!genericInfo) {
+                    genericInfo = {
+                        title: data.title || '',
+                        description: data.description || '',
+                        uploader: data.uploader || ''
+                    }
+                }
+            } catch {
+                continue
+            }
+        }
+
+        return { infoMap, genericInfo }
+    }
+
+    formatCaption(info) {
+        if (!info) return null
+
+        const titleLine = info.uploader
+            ? `> ${info.title} - ${info.uploader}`
+            : info.title
+
+        return info.description
+            ? `${titleLine}\n${info.description}`
+            : titleLine
+    }
+
+    async fixExtension(filePath) {
+        const ext = path.extname(filePath).slice(1).toLowerCase()
+
+        for (const typeInfo of Object.values(FILE_TYPES)) {
+            if (typeInfo.extensions?.has(ext)) return filePath
+        }
+
+        try {
+            const { stdout } = await execFileAsync(
+                'file',
+                ['-b', '--extension', filePath]
+            )
+
+            const detectedExt = stdout.trim().split('/')[0]
+
+            if (detectedExt && detectedExt !== '???') {
+                const newPath = ext
+                    ? filePath.replace(/\.[^.]*$/, `.${detectedExt}`)
+                    : `${filePath}.${detectedExt}`
+
+                await fs.rename(filePath, newPath)
+                return newPath
+            }
+        } catch {}
+
+        return filePath
+    }
+
+    async sendDownloadedFile(
+        conn,
+        from,
+        mek,
+        filePath,
+        caption = null
+    ) {
+        filePath = await this.fixExtension(filePath)
+
+        let { mimetype, category } = getFileDetails(filePath)
+
+        const { size } = await fs.stat(filePath)
+
+        if (category !== 'document' && size > this.config.maxPreviewSize) {
+            category = 'document'
+        }
+
+        const fileBuffer = await withTimeout(
+            fs.readFile(filePath),
+            TIMEOUT_MS,
+            'Timeout reading file for upload'
+        )
+
+        const fileName = path.basename(filePath)
+        const quotedOptions = mek ? { quoted: mek } : {}
+
+        let payload
+
+        if (category === 'video') {
+            payload = {
+                video: fileBuffer,
+                mimetype,
+                fileName,
+                caption: caption || undefined
+            }
+        } else if (category === 'image') {
+            payload = {
+                image: fileBuffer,
+                mimetype,
+                fileName,
+                caption: caption || undefined
+            }
+        } else if (category === 'audio') {
+            payload = {
+                audio: fileBuffer,
+                mimetype,
+                fileName,
+                ptt: false
+            }
+        } else {
+            payload = {
+                document: fileBuffer,
+                mimetype,
+                fileName,
+                caption: caption || undefined
+            }
+        }
+
+        await conn.sendMessage(from, payload, quotedOptions)
+        await this.safeCleanup(filePath)
+    }
+
+    async safeCleanup(target, retries = 3) {
+        if (!target) return
+
+        for (let i = 0; i < retries; i++) {
+            try {
+                const stats = await fs.stat(target)
+
+                if (stats.isDirectory()) {
+                    await withTimeout(
+                        fs.rm(target, { recursive: true, force: true }),
+                        TIMEOUT_MS,
+                        'Timeout cleaning directory'
+                    )
+                } else {
+                    await withTimeout(
+                        fs.unlink(target),
+                        TIMEOUT_MS,
+                        'Timeout cleaning file'
+                    )
+                }
+
+                return
+            } catch (err) {
+                if (err.code === 'ENOENT') return
+
+                if (i === retries - 1) {
+                    log.error(`Failed to cleanup ${target}:`, err.message)
+                    return
+                }
+
+                await new Promise(resolve =>
+                    setTimeout(resolve, 1000 * (i + 1))
+                )
+            }
+        }
+    }
+
+    async updateYtDlp() {
+        try {
+            const result = await this.safeExecuteYtDlp([
+                '--update-to',
+                'master'
+            ])
+
+            return (
+                `> 🔄 yt-dlp update\n` +
+                `${result.stdout || result.stderr || 'yt-dlp updated successfully'}`
+            )
+        } catch {
+            return null
+        }
+    }
+
+    async uploadCookies(conn, from, mek, quoted, cookieText = null) {
+        let cookieContent = null
+
+        if (cookieText) {
+            cookieContent = cookieText
+        } else if (quoted) {
+            let buf
+
+            if (typeof quoted.downloadMediaMessage === 'function') {
+                buf = await quoted.downloadMediaMessage()
+            } else {
+                buf = await downloadMediaMessage(quoted)
+            }
+
+            if (!buf) {
+                throw new Error('Could not download the quoted cookies file')
+            }
+
+            cookieContent = buf.toString()
+        } else {
+            throw new Error(
+                'Cookies must be supplied as text or by quoting a cookies file.'
+            )
+        }
+
+        await this.ensureDirectories()
+
+        await withTimeout(
+            fs.writeFile(
+                path.join(this.config.ytDlpPath, 'yt-dlp.cookies.txt'),
+                cookieContent
+            ),
+            TIMEOUT_MS,
+            'Timeout writing cookies'
+        )
+
+        await conn.sendMessage(
+            from,
+            { text: '✅ Cookies uploaded successfully.' },
+            mek ? { quoted: mek } : {}
+        )
+    }
+
+    async downloadWithYtDlp(
+        conn,
+        from,
+        mek,
+        urls,
+        formatType = 'video',
+        enablePlaylist = false,
+        timeRanges = null,
+        quality = null
+    ) {
+        return this.downloadQueue.add(async () => {
+            await this.detectYtDlpBinary()
+
+            const sessionId = `yt-dlp_${Date.now()}`
+            const outputDir = path.join(this.config.tempDir, sessionId)
+
+            const cookiesArgs = this.buildCookiesArgs()
+
+            await this.ensureDirectories()
+
+            await withTimeout(
+                fs.mkdir(outputDir, { recursive: true }),
+                TIMEOUT_MS,
+                'Timeout creating session directory'
+            )
+
+            const isMp3Playlist =
+                formatType === 'audio' && enablePlaylist
+
+            const isDirectLink =
+                formatType === 'video' && !enablePlaylist
+
+            let lastError = null
+
+            try {
+                for (const url of urls) {
+                    const outputTemplate = path.join(
+                        outputDir,
+                        '%(title).70s.%(ext)s'
+                    )
+
+                    const playlistArgs = enablePlaylist
+                        ? this.getFormats().playlist
+                        : this.getFormats().noPlaylist
+
+                    const playlistItemsArgs = enablePlaylist
+                        ? ['--playlist-items', `1:${this.config.playlistLimit}`]
+                        : []
+
+                    const timeRangeArgs =
+                        timeRanges && !enablePlaylist
+                            ? ['--download-sections', timeRanges]
+                            : []
+
+                    const infoJsonArgs = isDirectLink
+                        ? ['--write-info-json']
+                        : []
+
+                    const formatArgs =
+                        formatType === 'video' && quality
+                            ? this.getVideoFormatArgs(quality)
+                            : this.getFormats()[formatType]
+
+                    const args = [
+                        '--restrict-filenames',
+                        '--extractor-retries', '3',
+                        '--fragment-retries', '3',
+                        '--compat-options',
+                        'no-youtube-unavailable-videos',
+                        '--ignore-errors',
+                        '--no-abort-on-error',
+                        '--max-filesize',
+                        this.config.maxFileSize.toString(),
+
+                        ...this.getCommonArgs(),
+                        ...playlistArgs,
+                        ...playlistItemsArgs,
+                        ...cookiesArgs,
+                        ...timeRangeArgs,
+                        ...infoJsonArgs,
+                        ...formatArgs,
+
+                        '-o',
+                        outputTemplate,
+                        url
+                    ]
+
+                    try {
+                        await this.safeExecuteYtDlp(args)
+                    } catch (err) {
+                        lastError = err
+                    }
+                }
+
+                const allFiles = await withTimeout(
+                    fs.readdir(outputDir),
+                    TIMEOUT_MS,
+                    'Timeout reading output directory'
+                )
+
+                const files = allFiles.filter(
+                    f => !f.endsWith('.info.json')
+                )
+
+                if (files.length === 0 && isDirectLink) {
+                    for (const url of urls) {
+                        const outputTemplate = path.join(
+                            outputDir,
+                            '%(title).70s.%(ext)s'
+                        )
+
+                        const timeRangeArgs = timeRanges
+                            ? ['--download-sections', timeRanges]
+                            : []
+
+                        const ariaArgs = [
+                            '--restrict-filenames',
+                            '--extractor-retries', '3',
+                            '--fragment-retries', '3',
+                            '--compat-options',
+                            'no-youtube-unavailable-videos',
+                            '--ignore-errors',
+                            '--no-abort-on-error',
+                            '--max-filesize',
+                            this.config.maxFileSize.toString(),
+
+                            ...this.getCommonArgs(),
+                            ...this.getFormats().noPlaylist,
+                            ...cookiesArgs,
+                            ...timeRangeArgs,
+                            ...this.getAria2Args(),
+                            ...this.getFormats()[formatType],
+
+                            '-o',
+                            outputTemplate,
+                            url
+                        ]
+
+                        try {
+                            await this.safeExecuteYtDlp(ariaArgs)
+                        } catch (err) {
+                            lastError = err
+                        }
+                    }
+
+                    const ariaFiles = (
+                        await withTimeout(
+                            fs.readdir(outputDir),
+                            TIMEOUT_MS,
+                            'Timeout'
+                        )
+                    ).filter(f => !f.endsWith('.info.json'))
+
+                    if (ariaFiles.length === 0) {
+                        const errorMessage =
+                            lastError?.stderr ||
+                            lastError?.message ||
+                            'Unknown error'
+
+                        const updateMessage = await this.updateYtDlp()
+
+                        throw new Error(
+                            updateMessage
+                                ? `${errorMessage}\n\n${updateMessage}`
+                                : errorMessage
+                        )
+                    }
+
+                    for (const file of ariaFiles) {
+                        await this.sendDownloadedFile(
+                            conn,
+                            from,
+                            mek,
+                            path.join(outputDir, file)
+                        )
+                    }
+
+                    return
+                }
+
+                if (files.length === 0) {
+                    const errorMessage =
+                        lastError?.stderr ||
+                        lastError?.message ||
+                        'No files were downloaded'
+
+                    const updateMessage = await this.updateYtDlp()
+
+                    throw new Error(
+                        updateMessage
+                            ? `${errorMessage}\n\n${updateMessage}`
+                            : errorMessage
+                    )
+                }
+
+                let infoMap = new Map()
+                let genericInfo = null
+
+                if (isDirectLink) {
+                    const info = await this.loadInfoJson(outputDir)
+
+                    infoMap = info.infoMap
+                    genericInfo = info.genericInfo
+                }
+
+                if (
+                    isMp3Playlist &&
+                    this.config.enableMp3Zip &&
+                    files.length > 1
+                ) {
+                    if (await this.checkZipAvailable()) {
+                        try {
+                            const zipPath = await this.compressWithZip(outputDir)
+
+                            await conn.sendMessage(
+                                from,
+                                {
+                                    document: await withTimeout(
+                                        fs.readFile(zipPath),
+                                        TIMEOUT_MS,
+                                        'Timeout reading zip'
+                                    ),
+                                    fileName: path.basename(zipPath),
+                                    mimetype: 'application/zip',
+                                    caption: 'Use 7zip to extract the playlist.'
+                                },
+                                mek ? { quoted: mek } : {}
+                            )
+
+                            await this.safeCleanup(zipPath)
+                        } catch (err) {
+                            log.error('ZIP creation failed:', err.message)
+
+                            for (const file of files) {
+                                await this.sendDownloadedFile(
+                                    conn,
+                                    from,
+                                    mek,
+                                    path.join(outputDir, file)
+                                )
+                            }
+                        }
+                    } else {
+                        for (const file of files) {
+                            await this.sendDownloadedFile(
+                                conn,
+                                from,
+                                mek,
+                                path.join(outputDir, file)
+                            )
+                        }
+                    }
+                } else {
+                    let firstFileSent = false
+
+                    for (const file of files) {
+                        let caption = null
+
+                        if (isDirectLink) {
+                            caption = infoMap.has(file)
+                                ? this.formatCaption(infoMap.get(file))
+                                : (
+                                    !firstFileSent && genericInfo
+                                        ? this.formatCaption(genericInfo)
+                                        : null
+                                )
+                        }
+
+                        await this.sendDownloadedFile(
+                            conn,
+                            from,
+                            mek,
+                            path.join(outputDir, file),
+                            caption
+                        )
+
+                        firstFileSent = true
+                    }
+                }
+
+                if (lastError) {
+                    const errorMessage =
+                        lastError.stderr ||
+                        lastError.message ||
+                        'Unknown error'
+
+                    const updateMessage = await this.updateYtDlp()
+
+                    throw new Error(
+                        updateMessage
+                            ? `${errorMessage}\n\n${updateMessage}`
+                            : errorMessage
+                    )
+                }
+            } finally {
+                await this.safeCleanup(outputDir)
+            }
+        })
+    }
+
+    async searchAndDownload(
+        conn,
+        from,
+        mek,
+        searchQuery,
+        isVideo = false,
+        quality = null
+    ) {
+        return this.downloadQueue.add(async () => {
+            await this.detectYtDlpBinary()
+
+            const sessionId = `yt-dlp_${Date.now()}`
+            const outputDir = path.join(this.config.tempDir, sessionId)
+
+            const cookiesArgs = this.buildCookiesArgs()
+
+            await this.ensureDirectories()
+
+            await withTimeout(
+                fs.mkdir(outputDir, { recursive: true }),
+                TIMEOUT_MS,
+                'Timeout creating session directory'
+            )
+
+            const outputTemplate = path.join(
+                outputDir,
+                '%(title).70s.%(ext)s'
+            )
+
+            const formatArgs = isVideo
+                ? (
+                    quality
+                        ? this.getVideoFormatArgs(quality)
+                        : this.getFormats().video
+                )
+                : this.getFormats().audio
+
+            const searchSources = [
+                { prefix: '', useDefaultSearch: true },
+
+                ...(isVideo
+                    ? [
+                        { prefix: 'ytsearch10:' },
+                        { prefix: 'gvsearch10:' },
+                        { prefix: 'yvsearch10:' },
+                        { prefix: 'dailymotionsearch:' }
+                    ]
+                    : [
+                        { prefix: 'ytsearch10:' },
+                        { prefix: 'scsearch10:' },
+                        { prefix: 'mailrusearch10:' },
+                        { prefix: 'nicosearch10:' }
+                    ])
+            ]
+
+            let lastError = null
+
+            try {
+                for (const { prefix, useDefaultSearch } of searchSources) {
+                    const searchUrl = useDefaultSearch
+                        ? searchQuery
+                        : `${prefix}${searchQuery}`
+
+                    const searchArgs = useDefaultSearch
+                        ? ['--default-search', 'auto']
+                        : []
+
+                    const args = [
+                        '--restrict-filenames',
+                        '--extractor-retries', '3',
+                        '--fragment-retries', '3',
+                        '--compat-options',
+                        'no-youtube-unavailable-videos',
+                        '--ignore-errors',
+                        '--no-abort-on-error',
+
+                        ...searchArgs,
+
+                        '--max-filesize',
+                        this.config.maxFileSize.toString(),
+
+                        ...this.getCommonArgs(),
+                        '--playlist-items', '1',
+                        ...formatArgs,
+                        ...cookiesArgs,
+
+                        '-o',
+                        outputTemplate,
+                        searchUrl
+                    ]
+
+                    try {
+                        await this.safeExecuteYtDlp(args)
+
+                        const files = (
+                            await withTimeout(
+                                fs.readdir(outputDir),
+                                TIMEOUT_MS,
+                                'Timeout'
+                            )
+                        ).filter(f => !f.endsWith('.info.json'))
+
+                        if (files.length > 0) {
+                            for (const file of files) {
+                                await this.sendDownloadedFile(
+                                    conn,
+                                    from,
+                                    mek,
+                                    path.join(outputDir, file)
+                                )
+                            }
+
+                            return
+                        }
+                    } catch (error) {
+                        lastError = error
+
+                        const currentFiles = (
+                            await withTimeout(
+                                fs.readdir(outputDir),
+                                TIMEOUT_MS,
+                                'Timeout'
+                            )
+                        ).filter(f => !f.endsWith('.info.json'))
+
+                        if (currentFiles.length > 0) {
+                            for (const file of currentFiles) {
+                                await this.sendDownloadedFile(
+                                    conn,
+                                    from,
+                                    mek,
+                                    path.join(outputDir, file)
+                                )
+                            }
+
+                            return
+                        }
+                    }
+                }
+
+                const errorMessage =
+                    lastError?.stderr ||
+                    lastError?.message ||
+                    `Could not download: ${searchQuery}`
+
+                const updateMessage = await this.updateYtDlp()
+
+                throw new Error(
+                    updateMessage
+                        ? `${errorMessage}\n\n${updateMessage}`
+                        : errorMessage
+                )
+            } finally {
+                await this.safeCleanup(outputDir)
+            }
+        })
+    }
+}
+
+const mediaDownloader = new MediaDownloader()
+
+function isValidUrl(value) {
+    try {
+        const parsed = new URL(value)
+        return ['http:', 'https:'].includes(parsed.protocol)
+    } catch {
+        return false
+    }
+}
+
+function getQuotedText(quoted) {
+    if (!quoted) return ''
+
+    return (
+        quoted.text ||
+        quoted.body ||
+        quoted.conversation ||
+        quoted.message?.conversation ||
+        quoted.message?.extendedTextMessage?.text ||
+        ''
+    )
+}
+
+cmd({
+    pattern: 'dla',
+    alias: ['downloadall'],
+    desc: 'Download videos, audio, playlists and media',
+    category: 'download',
+    filename: __filename,
+    fromMe: true
+}, async (conn, mek, m, context) => {
+    const {
+        from,
+        quoted,
+        q,
+        reply
+    } = context
+
+    const sendReply = async text => {
+        if (typeof reply === 'function') {
+            return reply(text)
+        }
+
+        return conn.sendMessage(
+            from,
+            { text },
+            mek ? { quoted: mek } : {}
+        )
+    }
 
     try {
-      while (
-        this.activeDownloads < this.maxConcurrent &&
-        this.queue.length > 0
-      ) {
-        const { task, resolve, reject } = this.queue.shift();
+        if (!dependenciesReady) {
+            return sendReply(getUnavailableMessage())
+        }
 
-        this.activeDownloads++;
+        mediaDownloader.setContext(context)
 
-        task()
-          .then(resolve)
+        const input =
+            (q || '').trim() ||
+            getQuotedText(quoted).trim()
+
+        if (!input) {
+            return sendReply(
+                '> 🎶 *Search and Download Song:*\n' +
+                '`dla <query>`\n\n' +
+
+                '> 🎥 *Search and Download Video:*\n' +
+                '`dla vd <query>`\n' +
+                '`dla vd 1080 <query>`\n\n' +
+
+                '> ⬇️ *Download Media:*\n' +
+                '`dla <url>`\n' +
+                '`dla 1080 <url>`\n' +
+                '`dla best <url>`\n' +
+                '`dla 4k <url>`\n\n' +
+
+                '> ✂️ *Download Segment:*\n' +
+                '`dla <url> --t 00:10-00:30`\n\n' +
+
+                '> 🎵 *Download Audio Playlist:*\n' +
+                '`dla mp3 <url>`\n\n' +
+
+                '> 📊 *Quality:*\n' +
+                '`360` `480/sd` `720/hd` `1080/fhd`\n' +
+                '`1440/2k` `2160/4k` `best`\n\n' +
+
+                '> 🍪 *Cookies:*\n' +
+                '`dla cookies <cookie_text>`\n' +
+                'Or reply to a cookies file with `.dla cookies`\n\n' +
+
+                '> 📖 *Help:*\n' +
+                'https://github.com/yt-dlp/yt-dlp'
+            )
+        }
+
+        if (input.toLowerCase().startsWith('cookies')) {
+            const cookieText = input
+                .substring('cookies'.length)
+                .trim()
+
+            await mediaDownloader.uploadCookies(
+                conn,
+                from,
+                mek,
+                quoted,
+                cookieText || null
+            )
+
+            return
+        }
+
+        const urls = (
+            input.match(/https?:\/\/[^\s]+/g) || []
+        ).filter(isValidUrl)
+
+        if (urls.length > 0) {
+            let commandPart = input
+
+            urls.forEach(url => {
+                commandPart = commandPart.replace(url, '').trim()
+            })
+
+            const parts = commandPart
+                .split(/\s+/)
+                .filter(Boolean)
+
+            if (parts.includes('mp3')) {
+                await mediaDownloader.downloadWithYtDlp(
+                    conn,
+                    from,
+                    mek,
+                    urls,
+                    'audio',
+                    true,
+                    null
+                )
+
+                return
+            }
+
+            let quality = null
+            const remainingParts = []
+
+            for (const part of parts) {
+                const parsed = parseQuality(part)
+
+                if (parsed && !quality) {
+                    quality = parsed
+                } else {
+                    remainingParts.push(part)
+                }
+            }
+
+            let timeRanges = null
+
+            const timeIndex = remainingParts.indexOf('--t')
+
+            if (
+                timeIndex !== -1 &&
+                remainingParts[timeIndex + 1]
+            ) {
+                timeRanges = mediaDownloader.parseTimeRanges(
+                    remainingParts.slice(timeIndex + 1).join(' ')
+                )
+            }
+
+            await mediaDownloader.downloadWithYtDlp(
+                conn,
+                from,
+                mek,
+                urls,
+                'video',
+                false,
+                timeRanges,
+                quality
+            )
+
+            return
+        }
+
+        const args = input.trim().split(/\s+/)
+        const command = args[0]
+        let remainingArgs = args.slice(1)
+
+        if (command.toLowerCase() === 'vd') {
+            let quality = null
+
+            if (remainingArgs.length > 0) {
+                const parsed = parseQuality(remainingArgs[0])
+
+                if (parsed) {
+                    quality = parsed
+                    remainingArgs = remainingArgs.slice(1)
+                }
+            }
+
+            const searchQuery = remainingArgs.join(' ').trim()
+
+            if (!searchQuery) {
+                return sendReply(
+                    '❌ Provide a video search query.\nExample: .dla vd 1080 nature'
+                )
+            }
+
+            await mediaDownloader.searchAndDownload(
+                conn,
+                from,
+                mek,
+                searchQuery,
+                true,
+                quality
+            )
+        } else {
+            await mediaDownloader.searchAndDownload(
+                conn,
+                from,
+                mek,
+                input,
+                false
+            )
+        }
+    } catch (error) {
+        log.error('Download command failed:', error)
+
+        await sendReply(
+            `❌ *Download failed*\n\n${error.message || 'Unknown error'}`
+        )
+    }
+})
+
+module.exports = { mediaDownloader }
+lve)
           .catch(reject)
           .finally(() => {
             this.activeDownloads--;
