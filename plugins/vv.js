@@ -1,34 +1,53 @@
 
-const { bot, forwardOrBroadCast, parsedJid } = require('../lib/');
+const { cmd } = require('../command')
 
-bot(
-  {
-    pattern: 'vv ?(.*)',
-    fromMe: true,
-    desc: 'Anti View Once',
-    type: 'whatsapp',
-  },
-  async (message, match) => {
-    if (
-      !message.reply_message ||
-      (
-        !message.reply_message.image &&
-        !message.reply_message.video &&
-        !message.reply_message.audio
-      )
-    ) {
-      return await message.send(
-        '*Example\n- Reply to a view once image, video or audio*\n- vv jid (optional)\n\n' +
-        '*© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ*'
-      );
+const FOOTER = '*© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ*'
+
+cmd({
+    pattern: 'antivv',
+    alias: ['viewonce'],
+    desc: 'View and forward a replied view-once message',
+    category: 'whatsapp',
+    filename: __filename
+}, async (conn, mek, m, context) => {
+    const { from, reply } = context
+
+    try {
+        if (!m.quoted) {
+            return reply(
+                `*Reply to a view-once image or video.*\n\n${FOOTER}`
+            )
+        }
+
+        const quotedMsg = await m.getQuotedObj()
+
+        if (!quotedMsg) {
+            return reply(`❌ Quoted message not found.\n\n${FOOTER}`)
+        }
+
+        const type = quotedMsg.mtype
+
+        if (![
+            'viewOnceMessage',
+            'viewOnceMessageV2',
+            'imageMessage',
+            'videoMessage',
+            'audioMessage'
+        ].includes(type)) {
+            return reply(`❌ Please reply to a view-once media message.\n\n${FOOTER}`)
+        }
+
+        await conn.copyNForward(
+            from,
+            quotedMsg,
+            true,
+            { readViewOnce: true }
+        )
+
+        return reply(FOOTER)
+
+    } catch (error) {
+        console.error('VV ERROR:', error)
+        return reply(`❌ Could not process this message.\n\n${FOOTER}`)
     }
-
-    const [jid] = parsedJid(match);
-    
-    await forwardOrBroadCast(jid || message.jid, message, {
-      viewOnce: false
-    });
-
-    await message.send('*© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ*');
-  }
-);
+})
