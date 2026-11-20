@@ -1,45 +1,62 @@
+const { cmd } = require('../command')
+const axios = require('axios')
+const yts = require('yt-search')
 
-const { bot, yts, song } = require('../lib/');
+const FOOTER = '*© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ*'
 
-bot(
-  {
-    pattern: 'song ?(.*)',
+cmd({
+    pattern: 'song',
+    alias: [],
+    desc: 'Download song from YouTube',
+    category: 'download',
     fromMe: true,
-    desc: 'Download YouTube Audio',
-    type: 'download',
-  },
-  async (message, match) => {
-    match = match || (message.reply_message && message.reply_message.text);
+    filename: __filename
+}, async (conn, mek, m, context) => {
+    const { from, q, reply } = context
 
-    if (!match) {
-      return await message.send('_Example : song ghost_');
+    if (!q) {
+        return reply(`*Example:* .song Shape of You\n\n${FOOTER}`)
     }
 
-    const result = await yts(match, 0, 1, message.id);
+    try {
+        await reply('🔎 Searching song...')
 
-    if (!result.length) {
-      return await message.send(`*${match} not found*`);
+        const search = await yts(q)
+        const video = search.videos?.[0]
+
+        if (!video) {
+            return reply(`❌ Song not found.\n\n${FOOTER}`)
+        }
+
+        const api = await axios.get(
+            `https://api.sayan-nexuswork.workers.dev/music?query=${encodeURIComponent(video.url)}`,
+            { timeout: 60000 }
+        )
+
+        const result = api.data?.result || api.data
+        const audioUrl =
+            result?.downloadUrl ||
+            result?.download_url ||
+            result?.audio ||
+            result?.url ||
+            result?.audioUrl ||
+            result?.download?.url
+
+        if (!audioUrl) {
+            return reply(`❌ Audio download link not found.\n\n${FOOTER}`)
+        }
+
+        await conn.sendMessage(from, {
+            audio: { url: audioUrl },
+            mimetype: 'audio/mpeg',
+            fileName: `${video.title}.mp3`,
+            ptt: false
+        }, { quoted: mek })
+
+        await reply(FOOTER)
+
+    } catch (error) {
+        console.error('SONG ERROR:', error)
+        return reply(`❌ Song download failed.\n\n${FOOTER}`)
     }
-
-    const { title, id } = result[0];
-
-    await message.send(`_Downloading ${title}_`);
-
-    const { buffer } = await song(id, message.id);
-
-    if (!buffer) {
-      return await message.send('Failed!');
-    }
-
-    await message.send(
-      buffer,
-      {
-        mimetype: 'audio/mpeg',
-        fileName: `${title}.mp3`
-      },
-      'audio'
-    );
-
-    await message.send('*© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ*');
-  }
-);
+})
