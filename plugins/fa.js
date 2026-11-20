@@ -1,94 +1,65 @@
 
-const { bot, forwardOrBroadCast } = require('../lib/');
+const { cmd } = require('../command')
 
-let savedMessage = '';
+let savedMessage = null
 
-const FOOTER = '\n\n*© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ*';
+cmd({
+    pattern: 'setfa',
+    alias: [],
+    desc: 'Save a replied message for forwarding',
+    category: 'utility',
+    filename: __filename
+}, async (conn, mek, m, context) => {
+    const { quoted, reply } = context
 
-bot(
-    {
-        pattern: 'setfa ?(.*)',
-        fromMe: true,
-        desc: 'Set a message for forwarding',
-        type: 'AHMII',
-    },
-    async (message) => {
-        if (!message.reply_message) {
-            return await message.send(
-                '*Reply to a message to set it for forwarding!*' + FOOTER
-            );
-        }
-
-        savedMessage = message.reply_message;
-
-        return await message.send(
-            '*Message saved for forwarding.*' + FOOTER
-        );
+    if (!quoted) {
+        return reply('Reply to a message to save it for forwarding!')
     }
-);
 
-bot(
-    {
-        pattern: 'fa ?(.*)',
-        fromMe: true,
-        desc: 'Forward saved message to a recipient',
-        type: 'AHMII',
-    },
-    async (message, match) => {
-        if (!savedMessage) {
-            return await message.send(
-                '*No message has been set. Use .setfa to set one.*' + FOOTER
-            );
-        }
+    savedMessage = quoted
+    return reply('Message saved for forwarding.')
+})
 
-        const numbers = match
-            .split(',')
-            .map((num) => num.trim().replace(/[^0-9]/g, ''))
-            .filter((num) => num.length > 0);
+cmd({
+    pattern: 'fa',
+    alias: [],
+    desc: 'Forward the saved message to this chat',
+    category: 'utility',
+    filename: __filename
+}, async (conn, mek, m, context) => {
+    const { from, reply } = context
 
-        if (numbers.length !== 1) {
-            return await message.send(
-                '*Usage:* .fa 923001234567\n' +
-                'Send only to one consenting recipient at a time.' +
-                FOOTER
-            );
-        }
-
-        const jid = numbers[0] + '@s.whatsapp.net';
-
-        try {
-            await forwardOrBroadCast(jid, savedMessage);
-
-            return await message.send(
-                '*Message forwarded to:* ' + numbers[0] + FOOTER
-            );
-        } catch (err) {
-            console.error('FA Forward Error:', err);
-
-            return await message.send(
-                '*Failed to forward the message.*' + FOOTER
-            );
-        }
+    if (!savedMessage) {
+        return reply('No message has been set. Use .setfa first.')
     }
-);
 
-bot(
-    {
-        pattern: 'seefa',
-        fromMe: true,
-        desc: 'View saved message',
-        type: 'AHMII',
-    },
-    async (message) => {
-        if (!savedMessage) {
-            return await message.send(
-                '*No message has been set yet.*' + FOOTER
-            );
-        }
-
-        return await message.send(
-            `*Current saved message:*\n${savedMessage.text || '[Saved message]'}` +
-            FOOTER
-        );
+    try {
+        await conn.copyNForward(from, savedMessage, true)
+        return reply('Message forwarded successfully.')
+    } catch (error) {
+        console.error('FA ERROR:', error)
+        return reply('Failed to forward the saved message.')
     }
-);
+})
+
+cmd({
+    pattern: 'seefa',
+    alias: [],
+    desc: 'View the saved message',
+    category: 'utility',
+    filename: __filename
+}, async (conn, mek, m, context) => {
+    const { reply } = context
+
+    if (!savedMessage) {
+        return reply('No message has been set yet.')
+    }
+
+    const text =
+        savedMessage.text ||
+        savedMessage.message?.conversation ||
+        savedMessage.message?.extendedTextMessage?.text ||
+        'Saved message contains media or no text.'
+
+    return reply(`*Current saved message:*\n${text}`)
+})
