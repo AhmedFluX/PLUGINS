@@ -1,126 +1,95 @@
+const { cmd } = require('../command')
 
-const { bot } = require('../lib');
+cmd({
+    pattern: 'mean',
+    alias: [],
+    desc: 'Get funny meaning of a word',
+    category: 'tools',
+    filename: __filename
+}, async (conn, mek, m, context) => {
+    const { from, q, reply } = context
 
-const FOOTER = '\n\n*© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ*';
+    try {
+        if (!q)
+            return reply('It is necessary to send a word!')
 
-bot(
-    {
-        pattern: 'mean ?(.*)',
-        fromMe: true,
-        desc: 'Get meaning of a word',
-        type: 'AHMII',
-    },
-    async (message, match) => {
-        try {
-            const word = match.trim();
+        const response = await fetch(
+            `https://api.urbandictionary.com/v0/define?term=${encodeURIComponent(q)}`
+        )
 
-            if (!word)
-                return await message.send(
-                    'It is necessary to send a word!' + FOOTER
-                );
+        const json = await response.json()
 
-            const response = await fetch(
-                `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`
-            );
+        if (!json.list || !json.list.length)
+            return reply('Oops!!, no results found!')
 
-            if (!response.ok)
-                return await message.send(
-                    'Oops!! No results found!' + FOOTER
-                );
+        return reply(json.list[0].definition)
 
-            const json = await response.json();
-
-            if (!Array.isArray(json) || !json.length)
-                return await message.send(
-                    'Oops!! No results found!' + FOOTER
-                );
-
-            const definition = json[0].meanings?.[0]?.definitions?.[0]?.definition;
-
-            if (!definition)
-                return await message.send(
-                    'Oops!! No results found!' + FOOTER
-                );
-
-            return await message.send(
-                `*${json[0].word}*\n\n*Meaning:*\n${definition}${FOOTER}`
-            );
-        } catch (error) {
-            console.error('Mean Error:', error);
-            return await message.send(
-                'Failed to get word meaning!' + FOOTER
-            );
-        }
+    } catch (error) {
+        console.error('MEAN ERROR:', error)
+        return reply('Something went wrong while getting the meaning.')
     }
-);
+})
 
-bot(
-    {
-        pattern: 'dict ?(.*)',
-        fromMe: true,
-        desc: 'Get meaning of a word',
-        type: 'AHMII',
-    },
-    async (message, match) => {
-        try {
-            const word = match.trim();
+cmd({
+    pattern: 'dict',
+    alias: [],
+    desc: 'Get meaning of a word',
+    category: 'tools',
+    filename: __filename
+}, async (conn, mek, m, context) => {
+    const { from, q, reply } = context
 
-            if (!word)
-                return await message.send(
-                    'It is necessary to send a word!' + FOOTER
-                );
+    try {
+        if (!q)
+            return reply('It is necessary to send a word!')
 
-            const response = await fetch(
-                `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`
-            );
+        const response = await fetch(
+            `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(q)}`
+        )
 
-            if (!response.ok)
-                return await message.send(
-                    'Oops!! No results found!' + FOOTER
-                );
+        const json = await response.json()
 
-            const json = await response.json();
+        let number = Math.floor(Math.random() * 100)
 
-            if (!Array.isArray(json) || !json.length)
-                return await message.send(
-                    'Oops!! No results found!' + FOOTER
-                );
+        if (number % 7 === 0) {
+            await reply('There is another command called "mean" which gives funny meanings of words. Try it out!')
+        }
 
-            let msg = '';
-            msg += `*${json[0].word}*\n`;
-            msg += '*Meanings:*\n\n';
+        if (!Array.isArray(json) || !json.length)
+            return reply('Oops!!, no results found!')
 
-            for (let i = 0; i < json[0].meanings.length; i++) {
-                msg += '*Part of Speech:* ';
-                msg += `${json[0].meanings[i].partOfSpeech}\n`;
+        let msg = ''
 
-                for (let j = 0; j < json[0].meanings[i].definitions.length; j++) {
-                    const definition = json[0].meanings[i].definitions[j];
+        msg += `*${json[0].word}*\n`
+        msg += 'Meanings:\n'
 
-                    msg += '*Definition:* ';
-                    msg += `${definition.definition}\n`;
+        for (let i = 0; i < json[0].meanings.length; i++) {
+            msg += '*Part of speech:* ' + `${json[0].meanings[i].partOfSpeech}\n`
 
-                    if (definition.example)
-                        msg += `*Example:* ${definition.example}\n`;
+            for (let j = 0; j < json[0].meanings[i].definitions.length; j++) {
+                const definition = json[0].meanings[i].definitions[j]
 
-                    if (definition.synonyms?.length)
-                        msg += `*Synonyms:* ${definition.synonyms.join(', ')}\n`;
+                msg += '*Definition:* ' + `${definition.definition}\n`
 
-                    if (definition.antonyms?.length)
-                        msg += `*Antonyms:* ${definition.antonyms.join(', ')}\n`;
-                }
+                if (definition.example)
+                    msg += `*Example:* ${definition.example}\n`
 
-                msg += '=============================\n';
+                if (definition.synonyms && definition.synonyms.length)
+                    msg += `*Synonyms:* ${definition.synonyms.join(', ')}\n`
+
+                if (definition.antonyms && definition.antonyms.length)
+                    msg += `*Antonyms:* ${definition.antonyms.join(', ')}\n`
             }
 
-            msg += FOOTER;
-
-            return await message.send(msg);
-        } catch (error) {
-            console.error('Dictionary Error:', error);
-            return await message.send(
-                'Failed to get word meaning!' + FOOTER
-            );
+            msg += '=============================\n'
         }
+
+        msg += '=============================\n'
+
+        return reply(msg)
+
+    } catch (error) {
+        console.error('DICT ERROR:', error)
+        return reply('Something went wrong while getting the dictionary meaning.')
     }
-);
+})
