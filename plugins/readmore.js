@@ -1,35 +1,32 @@
 
-const { bot } = require('../lib');
+const { cmd } = require('../command')
 
-const more = String.fromCharCode(8206);
-const readMore = more.repeat(4001);
+const more = String.fromCharCode(8206)
+const readMore = more.repeat(4001)
 
-const FOOTER = '\n\n*© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ*';
+cmd({
+    pattern: 'readmore',
+    alias: [],
+    desc: 'Add Readmore to text',
+    category: 'misc',
+    filename: __filename
+}, async (conn, mek, m, context) => {
+    const { from, q, reply } = context
 
-bot(
-    {
-        pattern: 'readmore ?(.*)',
-        fromMe: true,
-        desc: 'Add Readmore text',
-        type: 'AHMII',
-    },
-    async (message, match) => {
-        if (!match) {
-            return await message.send(
-                'Example: .readmore Hi readmore Hello' + FOOTER
-            );
-        }
-
-        const readmoreText = match.replace(/readmore/gi, readMore);
-
-        try {
-            return await message.send(readmoreText + FOOTER);
-        } catch (error) {
-            console.error('Readmore Error:', error);
-
-            return await message.send(
-                '❌ Error.' + FOOTER
-            );
-        }
+    if (!q) {
+        return reply('Example: .readmore Hi readmore hello')
     }
-);
+
+    const readmoreText = q.replace(/readmore/gi, readMore)
+
+    try {
+        await conn.sendMessage(
+            from,
+            { text: readmoreText },
+            { quoted: mek }
+        )
+    } catch (error) {
+        console.error('READMORE ERROR:', error)
+        return reply('❌ Error.')
+    }
+})
