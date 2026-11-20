@@ -18,7 +18,7 @@ const footer = '*© 𝐀𝐇𝐌𝐄𝐃-𝐌𝐃*'
 
 bot(
   {
-    pattern: 'alexa',
+    pattern: "alexa",
     type: 'misc',
     desc: 'Play Music Using Sayan Official API',
   },
