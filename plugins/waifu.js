@@ -1,87 +1,87 @@
+const { cmd } = require('../command')
 
-const { bot, fetch } = require('../lib');
+const FOOTER = '*© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ*'
 
-const FOOTER = '\n\n*© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ*';
+const SAFE_TAGS = [
+  'maid',
+  'waifu',
+  'marin-kitagawa',
+  'mori-calliope',
+  'raiden-shogun',
+  'oppai',
+  'selfies',
+  'uniform',
+  'kamisato-ayaka'
+]
 
-bot(
-  {
-    pattern: 'waifu ?(.*)',
-    desc: 'Get safe waifu images from API',
-    type: 'AHMII',
-  },
-  async (message, match) => {
-    try {
-      match = match.trim();
+cmd({
+  pattern: 'waifu ?(.*)',
+  alias: [],
+  desc: 'Get safe waifu images',
+  category: 'fun',
+  filename: __filename
+}, async (conn, mek, m, context) => {
+  const { from, q, reply } = context
 
-      if (!match) {
-        return await message.send(
-          '*Usage:*\n' +
-          '.waifu [tag]\n' +
-          '.waifu tags' +
-          FOOTER
-        );
-      }
+  try {
+    const input = (q || '').trim().toLowerCase()
 
-      if (match.toLowerCase() === 'tags') {
-        return getWaifuTags(message);
-      }
-
-      const tag = match || 'waifu';
-
-      const apiUrl = 'https://api.waifu.im/search';
-
-      const params = new URLSearchParams();
-      params.append('included_tags', tag);
-      params.set('is_nsfw', 'false');
-      params.set('height', '>=2000');
-
-      const requestUrl = `${apiUrl}?${params.toString()}`;
-
-      const response = await fetch(requestUrl);
+    if (input === 'tags') {
+      const response = await fetch('https://api.waifu.im/tags')
 
       if (!response.ok) {
-        throw new Error(`Request failed: ${response.status}`);
+        return reply('Unable to fetch tags. Please try again.')
       }
 
-      const data = await response.json();
-      const images = data.images || [];
+      const data = await response.json()
+      const tags = data.versatile || []
 
-      if (images.length > 0) {
-        for (const image of images) {
-          await message.sendFromUrl(image.url, { buffer: false });
-        }
-      } else {
-        await message.send(
-          'No waifu images found for this tag.' + FOOTER
-        );
-      }
-    } catch (error) {
-      console.error('[WAIFU ERROR]', error.message);
+      const tagList = tags
+        .map(tag => `• ${tag.name || tag}`)
+        .join('\n')
 
-      await message.send(
-        'Failed to retrieve waifu images.' + FOOTER
-      );
+      return reply(
+        `╭━━〔 𝐖𝐀𝐈𝐅𝐔 𝐓𝐀𝐆𝐒 〕━━╮\n${tagList}\n╰━━━━━━━━━━━━━━╯\n\n${FOOTER}`
+      )
     }
+
+    const tag = input || 'waifu'
+
+    if (!SAFE_TAGS.includes(tag)) {
+      return reply(
+        `Invalid tag!\n\nAvailable tags:\n${SAFE_TAGS.join(', ')}\n\nUse: .waifu tags`
+      )
+    }
+
+    const url = new URL('https://api.waifu.im/search')
+    url.searchParams.set('included_tags', tag)
+    url.searchParams.set('is_nsfw', 'false')
+
+    const response = await fetch(url.toString())
+
+    if (!response.ok) {
+      return reply('Waifu API is currently unavailable. Try again later.')
+    }
+
+    const data = await response.json()
+    const images = data.images || []
+
+    if (!images.length) {
+      return reply('No images found for this tag.')
+    }
+
+    const selected = images[Math.floor(Math.random() * images.length)]
+
+    await conn.sendMessage(
+      from,
+      {
+        image: { url: selected.url },
+        caption: `╭━━〔 𝐖𝐀𝐈𝐅𝐔 〕━━╮\n┃ Tag: ${tag}\n╰━━━━━━━━━━━━━━╯\n\n${FOOTER}`
+      },
+      { quoted: mek }
+    )
+  } catch (error) {
+    console.error('WAIFU ERROR:', error)
+    return reply('Something went wrong while fetching the image.')
   }
-);
-
-const getWaifuTags = async (message) => {
-  const versatileTags = [
-    'maid',
-    'waifu',
-    'marin-kitagawa',
-    'mori-calliope',
-    'raiden-shogun',
-    'selfies',
-    'uniform',
-    'kamisato-ayaka',
-  ];
-
-  const responseMessage =
-    '*Available Tags:*\n\n' +
-    '*Versatile Tags:*\n' +
-    versatileTags.join(', ') +
-    FOOTER;
-
-  await message.send(responseMessage);
-};
+})
