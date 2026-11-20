@@ -1,58 +1,79 @@
+const { cmd } = require('../command')
+const axios = require('axios')
 
-const { bot, getJson, getBuffer } = require('../lib')
+const FOOTER = '*© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ*'
 
-bot(
-    {
-        pattern: 'ig ?(.*)',
-        fromMe: true,
-        desc: 'Insta Profile Search',
-        type: 'search',
-    },
-    async (message, match) => {
-        if (!match)
-            return await message.send(
-                '*Give me a instagram username*\n\n*© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ*'
-            )
+cmd({
+    pattern: 'ig',
+    alias: ['insta', 'iginfo'],
+    desc: 'Search Instagram profile information',
+    category: 'search',
+    filename: __filename
+}, async (conn, mek, m, { from, q, reply }) => {
+    try {
+        const username = (q || '').trim().replace(/^@/, '')
 
-        try {
-            const { result, status } = await getJson(
-                `https://levanter.onrender.com/ig?q=${encodeURIComponent(match.trim())}`
-            )
-
-            if (!status || !result)
-                return await message.send(
-                    '*Not found*\n\n*© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ*'
-                )
-
-            const {
-                name,
-                username,
-                avatar,
-                posts,
-                following,
-                followers,
-                description,
-            } = result
-
-            const { buffer } = await getBuffer(avatar)
-
-            if (!buffer)
-                return await message.send('*Profile image not found*')
-
-            await message.send(
-                buffer,
-                {
-                    caption:
-                        '```' +
-                        `username : ${username}\nname : ${name}\nbio : ${description}\nposts : ${posts}\nfollowers : ${followers}\nfollowning : ${following}` +
-                        '```\n\n*© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ*',
-                },
-                'image'
-            )
-        } catch (error) {
-            return await message.send(
-                `*Instagram profile search failed*\n\n${error.message}\n\n*© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ*`
+        if (!username) {
+            return reply(
+                `❌ Please provide an Instagram username.\n\nExample: .ig instagram`
             )
         }
+
+        await conn.sendMessage(from, {
+            react: { text: '⏳', key: m.key }
+        })
+
+        const apiUrl =
+            `https://levanter.onrender.com/ig?q=${encodeURIComponent(username)}`
+
+        const { data } = await axios.get(apiUrl, {
+            timeout: 30000
+        })
+
+        if (!data || data.status === false) {
+            return reply('❌ Instagram profile not found.')
+        }
+
+        const profile = data.result || data.data || data
+
+        const avatar =
+            profile.profile_pic ||
+            profile.profilePic ||
+            profile.avatar ||
+            profile.profile_picture
+
+        const caption = `📸 *INSTAGRAM PROFILE*
+
+👤 *Username:* ${profile.username || username}
+📛 *Name:* ${profile.name || 'Not available'}
+📝 *Bio:* ${profile.bio || 'Not available'}
+
+📮 *Posts:* ${profile.posts ?? 'N/A'}
+👥 *Followers:* ${profile.followers ?? 'N/A'}
+➡️ *Following:* ${profile.following ?? profile.followning ?? 'N/A'}
+
+${FOOTER}`
+
+        if (avatar) {
+            await conn.sendMessage(from, {
+                image: { url: avatar },
+                caption
+            }, { quoted: mek })
+        } else {
+            await reply(caption)
+        }
+
+        await conn.sendMessage(from, {
+            react: { text: '✅', key: m.key }
+        })
+
+    } catch (error) {
+        console.error('IG ERROR:', error)
+
+        await conn.sendMessage(from, {
+            react: { text: '❌', key: m.key }
+        })
+
+        return reply('❌ Instagram profile search failed. Try again later.')
     }
-)
+})
