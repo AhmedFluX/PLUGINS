@@ -1,8 +1,10 @@
 
 const { bot, lang } = require('../lib/');
+const fetch = (...args) =>
+    import('node-fetch').then(({ default: fetch }) => fetch(...args));
 
 // ==========================================
-// MUSIC DOWNLOADER CONFIGURATION
+// CONFIGURATION
 // ==========================================
 
 const CONFIG = {
@@ -142,7 +144,7 @@ async function searchMusic(api, key, query) {
             url.searchParams.set('q', query);
         }
 
-        const response = await fetch(url, {
+        const response = await fetch(url.toString(), {
             headers: {
                 'User-Agent': 'Mozilla/5.0',
                 'Accept': 'application/json',
@@ -176,6 +178,21 @@ async function downloadAudio(url) {
 
     if (parsed.protocol !== 'https:') {
         throw new Error('Invalid audio URL');
+    }
+
+    const allowedHosts = [
+        'saavn.sumit.co',
+        'deezer.com',
+        'dzcdn.net',
+        'mzstatic.com'
+    ];
+
+    const hostname = parsed.hostname.toLowerCase();
+
+    if (!allowedHosts.some(host =>
+        hostname === host || hostname.endsWith('.' + host)
+    )) {
+        throw new Error('Audio host not allowed');
     }
 
     const controller = new AbortController();
@@ -251,20 +268,28 @@ bot(
 
             if (!query) {
                 return await message.send(
-                    '🎵 *MUSIC DOWNLOADER*\n\n' +
-                    'Usage: .musix Song Name\n\n' +
-                    'Examples:\n' +
-                    '.musix Tum Hi Ho\n' +
-                    '.musix Kesariya\n' +
-                    '.musix maharaja song Govinda\n\n' +
+                    '╭━━〔 𝐌𝐔𝐒𝐈𝐂 𝐃𝐎𝐖𝐍𝐋𝐎𝐀𝐃𝐄𝐑 〕━━╮\n' +
+                    '┃\n' +
+                    '┃ ◈ Usage: .musix Song Name\n' +
+                    '┃\n' +
+                    '┃ ◈ Examples:\n' +
+                    '┃   .musix Tum Hi Ho\n' +
+                    '┃   .musix Kesariya\n' +
+                    '┃   .musix Govinda Songs\n' +
+                    '┃\n' +
+                    '╰━━━━━━━━━━━━━━━━━━╯\n\n' +
                     FOOTER
                 );
             }
 
             await message.send(
-                '🔎 *SEARCHING MUSIC...*\n\n' +
-                `🎧 Song: ${query}\n` +
-                '⏳ Please wait...\n\n' +
+                '╭━━〔 𝐌𝐔𝐒𝐈𝐂 𝐒𝐄𝐀𝐑𝐂𝐇 〕━━╮\n' +
+                '┃\n' +
+                `┃ ◈ Song: ${query}\n` +
+                '┃ ◈ Status: Searching...\n' +
+                '┃ ◈ Please wait!\n' +
+                '┃\n' +
+                '╰━━━━━━━━━━━━━━━━━━╯\n\n' +
                 FOOTER
             );
 
@@ -310,7 +335,7 @@ bot(
             }
 
             if (!music) {
-                console.error(lastError);
+                console.error('[MUSIC SEARCH]', lastError);
 
                 return await message.send(
                     '❌ *MUSIC NOT FOUND*\n\n' +
@@ -337,7 +362,7 @@ bot(
             const filename =
                 cleanName + (isM4a ? '.m4a' : '.mp3');
 
-            // SEND AUDIO THROUGH AHMED-MD
+            // SEND AUDIO
 
             await message.send(
                 audio,
@@ -355,11 +380,16 @@ bot(
             // SUCCESS MESSAGE
 
             await message.send(
-                '✅ *MUSIC SENT SUCCESSFULLY*\n\n' +
-                `🎵 Title: ${music.title || query}\n` +
-                `👤 Artist: ${music.artist || 'Unknown'}\n` +
-                `⏱ Duration: ${music.duration || 'Unknown'}\n\n' +
-                '🎧 Enjoy Your Music!\n\n' +
+                '╭━━〔 𝐌𝐔𝐒𝐈𝐂 𝐃𝐎𝐖𝐍𝐋𝐎𝐀𝐃𝐄𝐃 〕━━╮\n' +
+                '┃\n' +
+                `┃ ◈ Title: ${music.title || query}\n` +
+                `┃ ◈ Artist: ${music.artist || 'Unknown'}\n` +
+                `┃ ◈ Duration: ${music.duration || 'Unknown'}\n` +
+                '┃ ◈ Status: Successfully Sent\n' +
+                '┃\n' +
+                '┃ 🎧 Enjoy Your Music!\n' +
+                '┃\n' +
+                '╰━━━━━━━━━━━━━━━━━━╯\n\n' +
                 FOOTER
             );
 
