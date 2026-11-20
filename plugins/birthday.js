@@ -1,42 +1,39 @@
+const { cmd } = require('../command')
+const { textMaker } = require('../lib')
 
-const { bot, textMaker } = require('../lib');
+cmd({
+    pattern: 'birthday',
+    alias: [],
+    desc: 'Create happy birthday image',
+    category: 'textmaker',
+    filename: __filename
+}, async (conn, mek, m, context) => {
+    const { from, q, reply } = context
 
-const FOOTER = '\n\n*© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ*';
+    try {
+        if (!q)
+            return reply('Give me text')
 
-bot(
-    {
-        pattern: 'birthday ?(.*)',
-        fromMe: true,
-        desc: 'Happy birthday',
-        type: 'AHMII',
-    },
-    async (message, match) => {
-        try {
-            if (!match)
-                return await message.send(
-                    'Give me text' + FOOTER
-                );
+        const effect_url =
+            'https://en.ephoto360.com/write-name-on-red-rose-birthday-cake-images-462.html'
 
-            const effect_url =
-                'https://en.ephoto360.com/write-name-on-red-rose-birthday-cake-images-462.html';
+        const { status, url } = await textMaker(effect_url, q)
 
-            const { status, url } = await textMaker(
-                effect_url,
-                match.trim()
-            );
-
-            if (url)
-                return await message.sendFromUrl(url);
-
-            return await message.send(
-                'Failed to create birthday image.' + FOOTER
-            );
-        } catch (error) {
-            console.error('Birthday Error:', error);
-
-            return await message.send(
-                'Something went wrong!' + FOOTER
-            );
+        if (url) {
+            await conn.sendMessage(
+                from,
+                {
+                    image: { url },
+                    caption: '*𝐇𝐀𝐏𝐏𝐘 𝐁𝐈𝐑𝐓𝐇𝐃𝐀𝐘*'
+                },
+                { quoted: mek }
+            )
+        } else {
+            return reply('Unable to create birthday image. Please try again.')
         }
+
+    } catch (error) {
+        console.error('BIRTHDAY ERROR:', error)
+        return reply('Something went wrong while creating birthday image.')
     }
-);
+})
