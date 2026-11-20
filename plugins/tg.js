@@ -1,68 +1,94 @@
 
-const fs = require('fs');
-const {
-  bot,
-  isUrl,
-  getTelegramStickers,
-  sticker,
-  getBuffer,
-  sleep
-} = require('../lib/');
+const { cmd } = require('../command')
+const axios = require('axios')
 
-bot(
-  {
-    pattern: 'tg ?(.*)',
-    desc: 'Download Telegram Stickers',
-    type: 'sticker',
-  },
-  async (message, match) => {
-    const input = match || (message.reply_message && message.reply_message.text);
-    const url = isUrl(input);
+const POWERED_BY = '*© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ*'
 
-    if (!url) {
-      return await message.send('*Example :* tg https://t.me/addstickers/sticker');
-    }
-
+cmd({
+    pattern: 'tg',
+    alias: ['telegramsticker'],
+    desc: 'Download Telegram sticker pack',
+    category: 'download',
+    react: '🎭',
+    filename: __filename
+}, async (conn, mek, m, { from, q, reply }) => {
     try {
-      const results = await getTelegramStickers(url);
-      const stickersCount = results.stickers.length;
-
-      if (stickersCount === 0) {
-        return await message.send('Stickers not supported');
-      }
-
-      await message.send(`Downloading ${stickersCount} from ${results.title}`);
-
-      for (const s of results.stickers) {
-        try {
-          if (s.name.endsWith('webp')) {
-            await message.sendFromUrl(s.url);
-          } else {
-            const b = await getBuffer(s.url);
-            fs.writeFileSync(b.name, b.buffer);
-
-            await message.send(
-              await sticker('str', b.name, 2, message.id),
-              { isAnimated: b.type === 'video' },
-              'sticker'
-            );
-
-            if (fs.existsSync(b.name)) {
-              fs.unlinkSync(b.name);
-            }
-          }
-        } catch (e) {
-          await message.send('tg: An error occurred!');
+        if (!q) {
+            return reply(`Provide a Telegram sticker pack link.\nExample: .tg https://t.me/addstickers/PackName\n\n${POWERED_BY}`)
         }
 
-        await sleep(1000);
-      }
+        const token = process.env.TELEGRAM_BOT_TOKEN
 
-      await message.send('*© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ*');
+        if (!token) {
+            return reply(`❌ TELEGRAM_BOT_TOKEN is missing from environment variables.\n\n${POWERED_BY}`)
+        }
 
-    } catch (e) {
-      console.error('TG Sticker Error:', e);
-      await message.send('Unable to download Telegram stickers!');
+        const match = q.match(/(?:t\.me\/addstickers\/|telegram\.me\/addstickers\/)([a-zA-Z0-9_]+)/i)
+
+        if (!match) {
+            return reply(`❌ Invalid Telegram sticker pack link.\n\n${POWERED_BY}`)
+        }
+
+        const packName = match[1]
+
+        await reply('⏳ Fetching Telegram sticker pack...')
+
+        const api = `https://api.telegram.org/bot${token}`
+
+        const response = await axios.get(`${api}/getStickerSet`, {
+            params: { name: packName },
+            timeout: 30000
+        })
+
+        if (!response.data?.ok || !response.data.result?.stickers?.length) {
+            return reply(`❌ Sticker pack not found or Telegram API error.\n\n${POWERED_BY}`)
+        }
+
+        const stickers = response.data.result.stickers
+            .filter(sticker => !sticker.is_animated && !sticker.is_video)
+            .slice(0, 20)
+
+        if (!stickers.length) {
+            return reply(`❌ This pack has no supported static stickers.\n\n${POWERED_BY}`)
+        }
+
+        let sent = 0
+
+        for (const sticker of stickers) {
+            try {
+                const fileResponse = await axios.get(`${api}/getFile`, {
+                    params: { file_id: sticker.file_id },
+                    timeout: 30000
+                })
+
+                const filePath = fileResponse.data?.result?.file_path
+
+                if (!filePath) continue
+
+                const download = await axios.get(
+                    `https://api.telegram.org/file/bot${token}/${filePath}`,
+                    {
+                        responseType: 'arraybuffer',
+                        timeout: 30000
+                    }
+                )
+
+                const buffer = Buffer.from(download.data)
+
+                await conn.sendMessage(from, {
+                    sticker: buffer
+                }, { quoted: mek })
+
+                sent++
+            } catch (error) {
+                console.error('TG STICKER ERROR:', error.message)
+            }
+        }
+
+        return reply(`✅ Sticker pack completed.\n\n📦 Pack: ${packName}\n🎭 Sent: ${sent}\n\n${POWERED_BY}`)
+
+    } catch (error) {
+        console.error('TG ERROR:', error)
+        return reply(`❌ Telegram error: ${error.message}\n\n${POWERED_BY}`)
     }
-  }
-);
+})
