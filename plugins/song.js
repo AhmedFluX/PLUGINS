@@ -1,181 +1,45 @@
 
-const { cmd } = require('../command');
-const fetch = (...args) =>
-  import('node-fetch').then(({ default: fetch }) => fetch(...args));
-const yts = require('yt-search');
-const axios = require('axios');
-const { fakevCard } = require('../lib/fakevCard');
+const { bot, yts, song } = require('../lib/');
 
-// ===============================
-// 🎵 SONG / MP3 DOWNLOADER
-// ===============================
+bot(
+  {
+    pattern: 'song ?(.*)',
+    fromMe: true,
+    desc: 'Download YouTube Audio',
+    type: 'download',
+  },
+  async (message, match) => {
+    match = match || (message.reply_message && message.reply_message.text);
 
-cmd({
-  pattern: 'song',
-  alias: ['ytmp3', 'play', 'mp3', 'gana', 'music', 'audio'],
-  react: '🎵',
-  desc: 'YouTube search & MP3 play',
-  category: 'download',
-  filename: __filename
-}, async (conn, mek, m, { q, reply }) => {
-  try {
-    const query = q?.trim();
-
-    if (!query) {
-      return reply('❌ Please Provide Me A Song Query or Link');
+    if (!match) {
+      return await message.send('_Example : song ghost_');
     }
 
-    await conn.sendMessage(m.chat, {
-      react: { text: '⏳', key: mek.key }
-    });
+    const result = await yts(match, 0, 1, message.id);
 
-    // YouTube Search
-    const search = await yts(query);
-
-    if (!search.videos || !search.videos.length) {
-      return reply('❌ No Result Found');
+    if (!result.length) {
+      return await message.send(`*${match} not found*`);
     }
 
-    const video = search.videos[0];
+    const { title, id } = result[0];
 
-    // MP3 API
-    const apiUrl =
-      `https://arslan-apis-v2.vercel.app/download/ytmp4?url=${encodeURIComponent(video.url)}`;
+    await message.send(`_Downloading ${title}_`);
 
-    const res = await axios.get(apiUrl, { timeout: 60000 });
+    const { buffer } = await song(id, message.id);
 
-    if (
-      !res.data ||
-      !res.data.status ||
-      !res.data.result ||
-      !res.data.result.download ||
-      !res.data.result.download.url
-    ) {
-      return reply('❌ Audio Not Generated');
+    if (!buffer) {
+      return await message.send('Failed!');
     }
 
-    const dlUrl = res.data.result.download.url;
-    const meta = res.data.result.metadata || {};
-    const quality = res.data.result.download.quality || '128kbps';
+    await message.send(
+      buffer,
+      {
+        mimetype: 'audio/mpeg',
+        fileName: `${title}.mp3`
+      },
+      'audio'
+    );
 
-    await conn.sendMessage(m.chat, {
-      audio: { url: dlUrl },
-      mimetype: 'audio/mpeg',
-      ptt: false,
-      fileName: `${meta.title || 'song'}.mp3`,
-      caption:
-        `🎵 *${meta.title || 'Unknown Title'}*\n` +
-        `🎚️ Quality: ${quality}\n\n` +
-        `> © POWERED BY AHMED-MD`,
-      contextInfo: {
-        externalAdReply: {
-          title: meta.title
-            ? meta.title.substring(0, 40)
-            : 'YouTube Song',
-          body: '▶︎ •၊၊||၊|။||||။‌‌‌‌‌၊|• AHMED-MD',
-          thumbnailUrl: video.thumbnail,
-          sourceUrl: video.url,
-          mediaType: 1,
-          renderLargerThumbnail: true
-        }
-      }
-    }, { quoted: fakevCard });
-
-    await conn.sendMessage(m.chat, {
-      react: { text: '✅', key: mek.key }
-    });
-
-  } catch (err) {
-    console.error('PLAY ERROR:', err);
-    reply('❌ Error Found Please Try Later');
-
-    await conn.sendMessage(m.chat, {
-      react: { text: '❌', key: mek.key }
-    });
+    await message.send('*© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ*');
   }
-});
-
-
-// ===============================
-// 🎬 YOUTUBE VIDEO DOWNLOADER
-// ===============================
-
-cmd({
-  pattern: 'video1',
-  alias: ['vid', 'ytv'],
-  desc: 'Download YouTube Video',
-  category: 'download',
-  react: '🪄',
-  filename: __filename
-}, async (conn, mek, m, { q, reply }) => {
-  try {
-    if (!q) {
-      return reply(
-        'Please provide a YouTube link or search query.\n\nExample: .video1 Pasoori'
-      );
-    }
-
-    let videoUrl;
-
-    if (
-      q.includes('youtube.com') ||
-      q.includes('youtu.be')
-    ) {
-      videoUrl = q.trim();
-    } else {
-      const search = await yts(q);
-
-      if (
-        !search ||
-        !search.videos ||
-        search.videos.length === 0
-      ) {
-        return reply('No results found.');
-      }
-
-      videoUrl = search.videos[0].url;
-    }
-
-    const apiUrl =
-      'https://gtech-api-xtp1.onrender.com/api/video/yt?apikey=APIKEY&url=' +
-      encodeURIComponent(videoUrl);
-
-    const response = await fetch(apiUrl);
-
-    if (!response.ok) {
-      throw new Error('Video API request failed');
-    }
-
-    const data = await response.json();
-
-    if (!data.status || !data.result?.media) {
-      return reply('Failed to fetch video.');
-    }
-
-    const {
-      video_url_hd,
-      video_url_sd
-    } = data.result.media;
-
-    const downloadUrl =
-      video_url_hd &&
-      video_url_hd !== 'No HD video URL available'
-        ? video_url_hd
-        : video_url_sd;
-
-    if (!downloadUrl || downloadUrl.includes('No')) {
-      return reply('No downloadable video found.');
-    }
-
-    await conn.sendMessage(m.chat, {
-      video: { url: downloadUrl },
-      caption: '*AHMED-MD*'
-    }, {
-      quoted: fakevCard
-    });
-
-  } catch (err) {
-    console.error('VIDEO ERROR:', err);
-    reply('Error while fetching video.');
-  }
-});
+);
