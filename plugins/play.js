@@ -1,67 +1,66 @@
-
-const { cmd } = require('../command')
-const axios = require('axios')
-
-const POWERED_BY = '*© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ*'
+const { cmd } = require('../command');
+const axios = require('axios');
+const yts = require('yt-search');
 
 cmd({
-    pattern: 'play',
-    alias: ['music'],
-    desc: 'Search and download music',
-    category: 'download',
-    react: '🎵',
+    pattern: "play",
+    alias: ["song", "ytmp3", "music"],
+    desc: "YouTube se song download karke bhejta hai",
+    category: "download",
+    react: "🎵",
     filename: __filename
-}, async (conn, mek, m, { from, q, reply }) => {
+}, async (conn, mek, m, { from, reply, text }) => {
     try {
-        if (!q) {
-            return reply(`Please provide a song name.\nExample: .play Believer\n\n${POWERED_BY}`)
+        const footer = "\n\n© POWERED BY AHMED-MD";
+
+        if (!text) return await reply("*🍁 Usage:* `.play <song name / youtube link>`\n\nExample: `.play Pasoori`" + footer);
+
+        let videoUrl = text.trim();
+
+        // 1. Agar user ne naam diya hai to YouTube pe search karo
+        if (!videoUrl.includes("youtube.com") && !videoUrl.includes("youtu.be")) {
+            const search = await yts(videoUrl);
+            if (!search.videos || search.videos.length === 0) {
+                return await reply("❌ Song nahi mila, dobara try karo." + footer);
+            }
+            videoUrl = search.videos[0].url;
         }
 
-        await reply('⏳ Searching your song...')
+        await reply("⏳ *Downloading song... thora wait karo*" + footer);
 
-        const apiUrl = `https://api.sayan-nexuswork.workers.dev/music?query=${encodeURIComponent(q)}`
-        const { data } = await axios.get(apiUrl, { timeout: 60000 })
+        // 2. API Call
+        const apiUrl = `https://jawadtechyt.vercel.app/ytmp3?url=${encodeURIComponent(videoUrl)}&key=EXTRA`;
+        const { data } = await axios.get(apiUrl);
 
-        if (!data) {
-            return reply(`❌ No response from music API.\n\n${POWERED_BY}`)
+        // API ka response alag alag format me aa sakta hai, sab handle kar liya
+        const result = data.result || data.data || data;
+        const downloadUrl = result.download_url || result.download || result.url || result.link || result.audio;
+        const title = result.title || result.name || "AHMED-MD Song";
+        const thumbnail = result.thumbnail || result.thumb || result.image;
+
+        if (!downloadUrl) {
+            return await reply("❌ Download link nahi mila, API down hai. Dobara try karo." + footer);
         }
 
-        const result = data.result || data.data || data
-
-        const audioUrl =
-            result.downloadUrl ||
-            result.download_url ||
-            result.audio ||
-            result.url ||
-            result.download?.url ||
-            result.audioUrl
-
-        const title = result.title || result.name || q
-        const thumbnail = result.thumbnail || result.image || ''
-
-        if (!audioUrl) {
-            console.log('PLAY API RESPONSE:', data)
-            return reply(`❌ Audio link not found in API response.\n\n${POWERED_BY}`)
-        }
-
+        // 3. Song bhejo
         await conn.sendMessage(from, {
-            audio: { url: audioUrl },
+            audio: { url: downloadUrl },
             mimetype: 'audio/mpeg',
             fileName: `${title}.mp3`,
-            ptt: false,
             contextInfo: {
                 externalAdReply: {
                     title: title,
-                    body: 'POWERED BY AHMED-MD',
-                    thumbnailUrl: thumbnail || undefined,
-                    mediaType: 1,
-                    renderLargerThumbnail: false
+                    body: "© POWERED BY AHMED-MD",
+                    thumbnailUrl: thumbnail,
+                    mediaType: 2,
+                    mediaUrl: videoUrl,
+                    sourceUrl: videoUrl
                 }
             }
-        }, { quoted: mek })
+        }, { quoted: mek });
 
     } catch (error) {
-        console.error('PLAY ERROR:', error)
-        return reply(`❌ Music download failed: ${error.message}\n\n${POWERED_BY}`)
+        console.error("play Error:", error);
+        await reply(`💢 Error: ${error.message}` + "\n\n© POWERED BY AHMED-MD");
     }
-})
+}); 
