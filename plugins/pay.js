@@ -1,4 +1,6 @@
-// Existing .paymsg command — same as your original code
+const { cmd } = require('../command');
+const { generateWAMessageFromContent, generateMessageIDV2 } = require('@whiskeysockets/baileys');
+
 cmd({
     pattern: "paymsg",
     alias: ["pay", "payment"],
@@ -12,7 +14,8 @@ cmd({
 
         if (!isCreator) return await reply("*📛 Owner Only Command*" + footer);
 
-        let inputText = typeof text === "string" ? text : (m.text || "");
+        // 1. Safe Text Parsing
+        let inputText = typeof text === 'string' ? text : (m.text || "");
         const args = inputText.trim().split(/\s+/);
 
         if (args.length < 2) {
@@ -22,38 +25,42 @@ cmd({
         const groupLink = args[0];
         const noteText = args.slice(1).join(" ") + footer;
 
+        // 2. Fetch Group Info (JID)
         const inviteMatch = groupLink.match(/chat\.whatsapp\.com\/([a-zA-Z0-9]+)/);
         if (!inviteMatch) return await reply("❌ Invalid group link format." + footer);
 
-        let targetJid;
+        const inviteCode = inviteMatch[1];
+        let targetJid = null;
 
         try {
-            const groupInfo = await conn.groupGetInviteInfo(inviteMatch[1]);
+            const groupInfo = await conn.groupGetInviteInfo(inviteCode);
             targetJid = groupInfo.id;
         } catch (e) {
             return await reply("❌ Failed to get group info. (Is the bot inside the group?)" + footer);
         }
 
+        // 3. Build Payment Message
         const randomAmount = Math.floor(Math.random() * 500) + 1;
         const scaledAmount = (randomAmount * 1000).toString();
 
         const paymentMessage = {
             requestPaymentMessage: {
-                currencyCodeIso4217: "USD",
+                currencyCodeIso4217: 'USD',
                 amount1000: scaledAmount,
-                requestFrom: "0@s.whatsapp.net",
+                requestFrom: '0@s.whatsapp.net',
                 noteMessage: {
                     extendedTextMessage: { text: noteText }
                 },
-                expiryTimestamp: "0",
+                expiryTimestamp: '0',
                 amount: {
                     value: scaledAmount,
                     offset: 1000,
-                    currencyCode: "USD"
+                    currencyCode: 'USD'
                 }
             }
         };
 
+        // 4. Send to Group
         const fullMessage = generateWAMessageFromContent(targetJid, paymentMessage, {
             userJid: conn.user.id,
             messageId: generateMessageIDV2(conn.user.id)
@@ -63,17 +70,21 @@ cmd({
             messageId: fullMessage.key.id
         });
 
+        // 5. React with ✅
         await conn.sendMessage(from, {
-            react: { text: "✅", key: mek.key }
+            react: {
+                text: "✅",
+                key: mek.key
+            }
         });
+
     } catch (error) {
         console.error("paymsg Error:", error);
-        await reply(`💢 Error: ${error.message}\n\n© POWERED BY AHMED-MD`);
+        await reply(`💢 Error: ${error.message}` + "\n\n© POWERED BY AHMED-MD");
     }
 });
 
 
-// New .payall command — in the same plugin/file
 cmd({
     pattern: "payall",
     alias: ["paytoall"],
@@ -87,39 +98,52 @@ cmd({
 
         if (!isCreator) return await reply("*📛 Owner Only Command*" + footer);
 
-        const noteText = (typeof text === "string" ? text : "").trim();
+        // 1. Safe Text Parsing
+        let inputText = typeof text === 'string' ? text : (m.text || "");
+        inputText = inputText.replace(/^\.?payall\s*/i, '').trim();
 
-        if (!noteText) {
+        if (!inputText) {
             return await reply("*🍁 Usage:* `.payall <message>`" + footer);
         }
 
-        const groups = await conn.groupFetchAllParticipating();
-        const groupJids = Object.keys(groups || {});
+        const noteText = inputText + footer;
 
-        if (!groupJids.length) {
+        // 2. Fetch All Groups
+        let groups = {};
+
+        try {
+            groups = await conn.groupFetchAllParticipating();
+        } catch (e) {
+            return await reply("❌ Failed to fetch groups." + footer);
+        }
+
+        const groupJids = Object.keys(groups || {});
+        if (groupJids.length === 0) {
             return await reply("❌ No groups found." + footer);
         }
 
+        // 3. Build Payment Message
         const randomAmount = Math.floor(Math.random() * 500) + 1;
         const scaledAmount = (randomAmount * 1000).toString();
 
         const paymentMessage = {
             requestPaymentMessage: {
-                currencyCodeIso4217: "USD",
+                currencyCodeIso4217: 'USD',
                 amount1000: scaledAmount,
-                requestFrom: "0@s.whatsapp.net",
+                requestFrom: '0@s.whatsapp.net',
                 noteMessage: {
-                    extendedTextMessage: { text: noteText + footer }
+                    extendedTextMessage: { text: noteText }
                 },
-                expiryTimestamp: "0",
+                expiryTimestamp: '0',
                 amount: {
                     value: scaledAmount,
                     offset: 1000,
-                    currencyCode: "USD"
+                    currencyCode: 'USD'
                 }
             }
         };
 
+        // 4. Send to All Groups
         let sent = 0;
         let failed = 0;
 
@@ -135,23 +159,24 @@ cmd({
                 });
 
                 sent++;
-            } catch (err) {
+            } catch (e) {
                 failed++;
-                console.error(`payall failed for ${targetJid}:`, err);
+                console.error("payall send error:", targetJid, e);
             }
         }
 
+        // 5. React with ✅
         await conn.sendMessage(from, {
-            react: { text: "✅", key: mek.key }
+            react: {
+                text: "✅",
+                key: mek.key
+            }
         });
 
-        return await reply(
-            `✅ Sent to ${sent}/${groupJids.length} groups.` +
-            (failed ? `\n❌ Failed: ${failed}` : "") +
-            footer
-        );
+        await reply(`✅ Message sent to ${sent}/${groupJids.length} groups.${failed ? `\n❌ Failed: ${failed}` : ''}` + footer);
+
     } catch (error) {
         console.error("payall Error:", error);
-        await reply(`💢 Error: ${error.message}\n\n© POWERED BY AHMED-MD`);
+        await reply(`💢 Error: ${error.message}` + "\n\n© POWERED BY AHMED-MD");
     }
 });
