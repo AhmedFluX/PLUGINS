@@ -4,7 +4,7 @@ cmd({
     pattern: "boobs",
     alias: ["xboobs", "bobs"],
     desc: "Random Anime Girl Image",
-    category: "fun",
+    category: "18+",
     react: "🌸",
     filename: __filename
 }, async (conn, mek, m, { from, reply }) => {
@@ -26,7 +26,7 @@ cmd({
     pattern: "xgirl",
     alias: ["xgirls", "ximg"],
     desc: "Random Anime Girl Image",
-    category: "fun",
+    category: "18+",
     react: "🌸",
     filename: __filename
 }, async (conn, mek, m, { from, reply }) => {
