@@ -1,53 +1,67 @@
-
 const { cmd } = require('../command')
 
-const FOOTER = '*© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ*'
-
 cmd({
-    pattern: 'antivv',
-    alias: ['viewonce'],
-    desc: 'View and forward a replied view-once message',
-    category: 'whatsapp',
+    pattern: "vv",
+    alias: ["viewonce", "view", "open"],
+    react: "🥺",
+    desc: "Retrieve view-once media (Owner only)",
+    category: "owner",
     filename: __filename
-}, async (conn, mek, m, context) => {
-    const { from, reply } = context
-
+},
+async (conn, mek, m, { from, isCreator, reply }) => {
     try {
-        if (!m.quoted) {
+        if (!isCreator)
+            return reply("*YEH COMMAND SIRF BOT OWNER KE LIYE HAI 😎*")
+
+        if (!m.quoted)
             return reply(
-                `*Reply to a view-once image or video.*\n\n${FOOTER}`
+                "*🥺 KISI VIEW ONCE PHOTO / VIDEO / AUDIO KO REPLY KARO*\n\n" +
+                "*Phir likho:* `.vv`\n\n" +
+                "*Phir dekho kamal 😎*"
             )
+
+        // 🔥 VIEW ONCE FIX
+        let quoted = m.quoted
+        let msg = quoted.message
+
+        if (msg?.viewOnceMessageV2) {
+            msg = msg.viewOnceMessageV2.message
+        } else if (msg?.viewOnceMessageV2Extension) {
+            msg = msg.viewOnceMessageV2Extension.message
         }
 
-        const quotedMsg = await m.getQuotedObj()
+        const type = Object.keys(msg)[0]
+        const buffer = await quoted.download()
 
-        if (!quotedMsg) {
-            return reply(`❌ Quoted message not found.\n\n${FOOTER}`)
+        let content = {}
+
+        if (type === "imageMessage") {
+            content = {
+                image: buffer,
+                caption: quoted.text || ""
+            }
+        } 
+        else if (type === "videoMessage") {
+            content = {
+                video: buffer,
+                caption: quoted.text || ""
+            }
+        } 
+        else if (type === "audioMessage") {
+            content = {
+                audio: buffer,
+                mimetype: "audio/mp4",
+                ptt: false
+            }
+        } 
+        else {
+            return reply("*❌ YE VIEW ONCE MEDIA SUPPORT NAHI KARTA 🥺*")
         }
 
-        const type = quotedMsg.mtype
+        await conn.sendMessage(from, content, { quoted: mek })
 
-        if (![
-            'viewOnceMessage',
-            'viewOnceMessageV2',
-            'imageMessage',
-            'videoMessage',
-            'audioMessage'
-        ].includes(type)) {
-            return reply(`❌ Please reply to a view-once media message.\n\n${FOOTER}`)
-        }
-
-        await conn.copyNForward(
-            from,
-            quotedMsg,
-            true,
-            { readViewOnce: true }
-        )
-
-        return reply(FOOTER)
-
-    } catch (error) {
-        console.error('VV ERROR:', error)
-        return reply(`❌ Could not process this message.\n\n${FOOTER}`)
+    } catch (e) {
+        console.log("VV ERROR:", e)
+        reply("*❌ VIEW ONCE OPEN KARNE ME ERROR AYA 🥺*")
     }
 })
