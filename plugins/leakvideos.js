@@ -1,68 +1,57 @@
-const { cmd } = require("../sajy");
-const { fakevCard } = require('../lib/fakevCard');
+const { cmd } = require('../command');
 
-
-//================= LEAKVIDEO 1 =================
+//================= LEAK VIDEO  =================
 
 cmd({
     pattern: "leakvideo",
+    alias: ["leakvideo", "leak"],
     desc: "Send random leak video",
-    category: "fun",
+    category: "18+",
     react: "🎬",
     filename: __filename
 }, async (conn, mek, m, { reply, from }) => {
-
     try {
-
-        await reply("⏳ Fetching leak video...");
+        await reply("⏳ Fetching sad video...\n\n© POWERED BY AHMED-MD");
 
         const videoUrl = "https://arslan-apis-v2.vercel.app/leakvideos";
 
         await conn.sendMessage(from, {
             video: { url: videoUrl },
             mimetype: "video/mp4",
-            caption: "🎬 Random Leak Video",
+            caption: "🎬 Random Leak Video\n\n© POWERED BY AHMED-MD",
             contextInfo: { mentionedJid: [m.sender] }
-        }, { quoted: fakevCard });
+        }, { quoted: mek });
 
     } catch (err) {
-
         console.log(err);
-        reply("❌ Video load nahi hui.");
-
+        reply("❌ Video load nahi hui.\n\n© POWERED BY AHMED-MD");
     }
-
 });
 
-
-//================= LEAKVIDEO 2 =================
+//================= LEAK VIDEO  =================
 
 cmd({
-    pattern: "leakvideo2",
-    desc: "Send random leak video 2",
-    category: "fun",
+    pattern: "leakvideo1",
+    alias: ["leak1"],
+    desc: "Send random leakvideo video 2",
+    category: "18+",
     react: "🔥",
     filename: __filename
 }, async (conn, mek, m, { reply, from }) => {
-
     try {
-
-        await reply("⏳ Fetching leak video...");
+        await reply("⏳ Fetching sad video...\n\n© POWERED BY AHMED-MD");
 
         const videoUrl = "https://arslan-apis-v2.vercel.app/leakvideos2";
 
         await conn.sendMessage(from, {
             video: { url: videoUrl },
             mimetype: "video/mp4",
-            caption: "🔥 Random Leak Video 2",
+            caption: "🔥 Random LeakVideo 2\n\n© POWERED BY AHMED-MD",
             contextInfo: { mentionedJid: [m.sender] }
-        }, { quoted: fakevCard });
+        }, { quoted: mek });
 
     } catch (err) {
-
         console.log(err);
-        reply("❌ Video load nahi hui.");
-
+        reply("❌ Video load nahi hui.\n\n© POWERED BY AHMED-MD");
     }
-
-});
+}); 
