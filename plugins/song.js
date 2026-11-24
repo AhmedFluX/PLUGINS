@@ -1,11 +1,10 @@
-
 const { cmd } = require('../command')
 const axios = require('axios')
 const yts = require('yt-search')
 
 const API = 'https://jawadtechyt.vercel.app/ytmp3'
 const API_KEY = 'EXTRA'
-const MAX_SIZE = 20 * 1024 * 1024
+// NO LIMIT
 
 const isYouTube = (text) =>
     /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)/i.test(text)
@@ -13,7 +12,7 @@ const isYouTube = (text) =>
 async function musicHandler(conn, mek, m, { from, q, reply }) {
     if (!q) {
         return reply(
-`╭━━〔 🎧 𝐀𝐇𝐌𝐄𝐃-𝐌𝐃 𝐌𝐔𝐒𝐈𝐂 〕━━╮
+`╭━━〔 🎧 AHMED-MD 〕━━╮
 ┃
 ┃ ✦ .song Song Name
 ┃ ✦ .song YouTube Link
@@ -31,22 +30,11 @@ async function musicHandler(conn, mek, m, { from, q, reply }) {
         let video
         let videoUrl
 
-        const status = await conn.sendMessage(from, {
-            text: `╭━━〔 🎧 𝐀𝐇𝐌𝐄𝐃-𝐌𝐃 〕━━╮
-┃
-┃ 🔎 Searching song...
-┃
-╰━━━━━━━━━━━━━━━━━━━━╯`
-        }, { quoted: mek })
-
-        // Search by YouTube link or song name
         if (isYouTube(query)) {
             videoUrl = query
-
             const match = query.match(
                 /(?:v=|youtu\.be\/|shorts\/)([a-zA-Z0-9_-]{11})/
             )
-
             if (match) {
                 video = await yts({ videoId: match[1] }).catch(() => null)
             }
@@ -55,7 +43,6 @@ async function musicHandler(conn, mek, m, { from, q, reply }) {
             if (!search.videos || !search.videos.length) {
                 throw new Error('No song found. Try another name.')
             }
-
             video = search.videos[0]
             videoUrl = video.url
         }
@@ -69,26 +56,12 @@ async function musicHandler(conn, mek, m, { from, q, reply }) {
         const duration = video?.timestamp || 'Unknown'
         const thumbnail = video?.thumbnail
 
-        await conn.sendMessage(from, {
-            text: `╭━━〔 🎵 𝐒𝐎𝐍𝐆 𝐅𝐎𝐔𝐍𝐃 〕━━╮
-┃
-┃ 🎶 *Title:* ${title}
-┃ 👤 *Artist:* ${artist}
-┃ ⏱️ *Duration:* ${duration}
-┃
-┃ ⏳ Downloading MP3...
-┃
-╰━━━━━━━━━━━━━━━━━━━━╯`,
-            edit: status.key
-        })
-
-        // Call your API
         const apiResponse = await axios.get(API, {
             params: {
                 url: videoUrl,
                 key: API_KEY
             },
-            timeout: 60000
+            timeout: 0
         })
 
         const data = apiResponse.data
@@ -97,22 +70,22 @@ async function musicHandler(conn, mek, m, { from, q, reply }) {
             throw new Error('Music API did not return an audio link.')
         }
 
-        // Download MP3 from API's downloadUrl
+        // NO LIMIT
         const audioResponse = await axios.get(data.downloadUrl, {
             responseType: 'arraybuffer',
-            timeout: 90000,
-            maxContentLength: MAX_SIZE,
-            maxBodyLength: MAX_SIZE
+            timeout: 0,
+            maxContentLength: Infinity,
+            maxBodyLength: Infinity
         })
 
         const audio = Buffer.from(audioResponse.data)
 
-        if (!audio.length || audio.length > MAX_SIZE) {
-            throw new Error('Audio is empty or larger than 20 MB.')
+        if (!audio.length) {
+            throw new Error('Audio is empty.')
         }
 
-        // Send song information
-        const caption = `╭━━〔 🎧 𝐀𝐇𝐌𝐄𝐃-𝐌𝐃 〕━━╮
+        // YE WALA OUTPUT - THUMBNAIL KE SATH
+        const caption = `╭━━〔 🎧 AHMED-MD 〕━━╮
 ┃
 ┃ 🎵 *${title}*
 ┃ 👤 *${artist}*
@@ -134,7 +107,7 @@ async function musicHandler(conn, mek, m, { from, q, reply }) {
             }, { quoted: mek })
         }
 
-        // Send audio
+        // USKE NEECHE DIRECT SONG
         await conn.sendMessage(from, {
             audio,
             mimetype: 'audio/mpeg',
