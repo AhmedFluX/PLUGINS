@@ -1,48 +1,69 @@
-const axios = require('axios');
-const { cmd } = require('../command');
+const { cmd } = require('../command')
+const axios = require('axios')
 
 cmd({
-    pattern: "define",
-    desc: "📖 Get the definition of a word",
-    react: "🔍",
-    category: "utility",
+    pattern: 'define',
+    desc: 'Get the definition of a word',
+    category: 'utility',
+    react: '🔍',
     filename: __filename
-},
-async (conn, mek, m, { from, q, reply }) => {
+}, async (conn, mek, m, { from, q, reply }) => {
     try {
-        if (!q) return reply("Please provide a word to define.\n\n📌 *Usage:* .define [word]");
+        if (!q) {
+            return reply(
+`╭━━〔 📖 AHMED-MD DEFINE 〕━━╮
+┃
+┃ ✦ .define Word
+┃ ✦ Example: .define love
+┃
+╰━━━━━━━━━━━━━━━━━━━━╯
 
-        const word = q.trim();
-        const url = `https://api.dictionaryapi.dev/api/v2/entries/en/${word}`;
+© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ`
+            )
+        }
 
-        const response = await axios.get(url);
-        const definitionData = response.data[0];
+        const word = q.trim().split(' ')[0]
+        const url = `https://api.dictionaryapi.dev/api/v2/entries/en/${encodeURIComponent(word)}`
 
-        const definition = definitionData.meanings[0].definitions[0].definition;
-        const example = definitionData.meanings[0].definitions[0].example || '❌ No example available';
-        const synonyms = definitionData.meanings[0].definitions[0].synonyms.join(', ') || '❌ No synonyms available';
-        const phonetics = definitionData.phonetics[0]?.text || '🔇 No phonetics available';
-        const audio = definitionData.phonetics[0]?.audio || null;
+        const response = await axios.get(url, { timeout: 30000 })
+        const definitionData = response.data[0]
 
-        const wordInfo = `
-📖 *Word*: *${definitionData.word}*  
-🗣️ *Pronunciation*: _${phonetics}_  
-📚 *Definition*: ${definition}  
-✍️ *Example*: ${example}  
-📝 *Synonyms*: ${synonyms}  
+        if (!definitionData) return reply('❌ Word not found.')
 
-🔗 *POWERED BY AHMED-MD*`;
+        const meaning = definitionData.meanings?.[0]
+        const def = meaning?.definitions?.[0]
+
+        const definition = def?.definition || 'N/A'
+        const example = def?.example || 'No example available'
+        const synonyms = def?.synonyms?.length ? def.synonyms.join(', ') : 'No synonyms available'
+        const phonetics = definitionData.phonetics?.find(p => p.text)?.text || 'No phonetics available'
+        const audio = definitionData.phonetics?.find(p => p.audio)?.audio || null
+        const partOfSpeech = meaning?.partOfSpeech || 'N/A'
+
+        const wordInfo = `╭━━〔 📖 AHMED-MD 〕━━╮
+┃
+┃ 📖 *Word:* ${definitionData.word}
+┃ 🗣️ *Pronunciation:* ${phonetics}
+┃ 📚 *Type:* ${partOfSpeech}
+┃ 📝 *Definition:* ${definition}
+┃ ✍️ *Example:* ${example}
+┃ 🔁 *Synonyms:* ${synonyms}
+┃
+╰━━━━━━━━━━━━━━━━━━━━╯
+
+© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ`
+
+        await reply(wordInfo)
 
         if (audio) {
-            await conn.sendMessage(from, { audio: { url: audio }, mimetype: 'audio/mpeg' }, { quoted: mek });
+            await conn.sendMessage(from, { audio: { url: audio }, mimetype: 'audio/mpeg' }, { quoted: mek })
         }
 
-        return reply(wordInfo);
     } catch (e) {
-        console.error("❌ Error:", e);
+        console.log('AHMED-MD DEFINE ERROR:', e.message)
         if (e.response && e.response.status === 404) {
-            return reply("🚫 *Word not found.* Please check the spelling and try again.");
+            return reply('❌ *Word not found.* Spelling check karke dobara try karo.')
         }
-        return reply("⚠️ An error occurred while fetching the definition. Please try again later.");
+        reply(`❌ *Define Failed*\n\nDobara try karo.\n\n© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ`)
     }
-});
+})
