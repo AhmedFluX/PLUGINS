@@ -4,8 +4,8 @@ const axios = require('axios')
 const FOOTER = '*© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ*'
 
 cmd({
-    pattern: 'ig',
-    alias: ['insta', 'iginfo'],
+    pattern: 'igp',
+    alias: ['igs', 'iginfo'],
     desc: 'Search Instagram profile information',
     category: 'search',
     filename: __filename
