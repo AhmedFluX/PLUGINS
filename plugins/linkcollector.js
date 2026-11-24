@@ -6,104 +6,110 @@ const dbPath = path.join(__dirname, '../lib/linkcollector.json')
 
 function loadDB() {
     try {
-        if (!fs.existsSync(dbPath)) return { enabled: false, targetJids: [], customMsg: '', links: [] }
-        const d = JSON.parse(fs.readFileSync(dbPath, 'utf8'))
-        return { enabled: false, targetJids: [], customMsg: '', links: [], ...d }
-    } catch { return { enabled: false, targetJids: [], customMsg: '', links: [] } }
+        if (!fs.existsSync(dbPath)) return { settings: { enabled: false, targetJids: [], customMsg: '' }, links: [] }
+        return JSON.parse(fs.readFileSync(dbPath, 'utf8'))
+    } catch { return { settings: { enabled: false, targetJids: [], customMsg: '' }, links: [] } }
 }
 function saveDB(data) { fs.writeFileSync(dbPath, JSON.stringify(data, null, 2)) }
 
-function makePanel(settings) {
-    return `╭━━〔 🔗 AHMED-MD LINK COLLECTOR 〕━━╮
-┃
-┃ 🔗 Collector Status: ${settings.enabled ? '🟢 ON' : '🔴 OFF'}
-┃ 🎯 Destinations: ${settings.targetJids.length}
-┃ 📥 Saved Links: ${settings.links.length}
-┃ 💬 Custom Message: ${settings.customMsg || 'None'}
-┃
-┃ 📌 Commands
-┃ ✦ .linkcollector on
-┃ ✦ .linkcollector off
-┃ ✦ .linkcollector add JID
-┃ ✦ .linkcollector del JID
-┃ ✦ .linkcollector msg TEXT
-┃ ✦ .linkcollector links
-┃ ✦ .linkcollector clear
-┃
-╰━━━━━━━━━━━━━━━━━━━━╯
+function extractInviteLinks(text) {
+    const regex = /https?:\/\/chat\.whatsapp\.com\/[A-Za-z0-9_-]+/gi
+    return [...new Set((text.match(regex) || []).map(link => link.replace(/[.,!?;)\]]+$/, '')))]
+}
 
-© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ`
+function makePanel(settings, savedLinks) {
+    return [
+        '╭━━〔 🔗 AHMED-MD LINK COLLECTOR 〕━━╮',
+        '┃',
+        `┃ Collector Status: ${settings.enabled ? '🟢 ON' : '🔴 OFF'}`,
+        `┃ Destinations: ${settings.targetJids.length}`,
+        `┃ Saved Links: ${savedLinks.length}`,
+        `┃ Custom Message: ${settings.customMsg || 'None'}`,
+        '┃',
+        '┃ 📌 Commands',
+        '┃ ✦ .linkcollector on',
+        '┃ ✦ .linkcollector off',
+        '┃ ✦ .linkcollector add JID',
+        '┃ ✦ .linkcollector del JID',
+        '┃ ✦ .linkcollector msg TEXT',
+        '┃ ✦ .linkcollector links',
+        '┃ ✦ .linkcollector clear',
+        '┃',
+        '╰━━━━━━━━━━━━━━━━━━━━╯',
+        '',
+        '© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ'
+    ].join('\n')
 }
 
 cmd({
     pattern: 'linkcollector',
-    desc: 'Collect WhatsApp group invite links',
+    desc: 'Ahmii Link Collector',
     category: 'owner',
     react: '🔗',
     filename: __filename
-}, async (conn, mek, m, { from, q, reply, isOwner }) => {
+}, async (conn, mek, m, { from, q, reply, isOwner, isAdmins, isGroup }) => {
     try {
-        if (!isOwner) return reply('❌ Sirf owner ye command use kar sakta hai.')
+        // ✅ FIX: Pehle sirf owner tha, ab Owner + Admin dono chala sakte hain
+        // Agar tu chahta hai sab chalaye to is line ko hata de
+        if (!isOwner && !isAdmins && !isGroup) {
+            // DM me sirf owner
+            if (!isOwner) return reply('❌ Sirf owner ye command use kar sakta hai.\n\n© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ')
+        }
+        if (isGroup && !isOwner && !isAdmins) return reply('❌ Sirf group admin / owner ye command use kar sakta hai.\n\n© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ')
 
-        const parts = (q || '').trim().split(/\s+/)
-        const action = (parts.shift() || '').toLowerCase()
+        const input = (q || '').trim()
+        const parts = input.split(/\s+/)
+        const command = (parts.shift() || '').toLowerCase()
         const value = parts.join(' ').trim()
 
-        const settings = loadDB()
+        const db = loadDB()
+        const settings = db.settings
 
-        if (!action || action === 'check') {
-            return reply(makePanel(settings))
+        if (!command || command === 'check') {
+            return reply(makePanel(settings, db.links))
         }
 
-        if (action === 'on' || action === 'off') {
-            settings.enabled = action === 'on'
-            saveDB(settings)
-            return reply(`✅ Link Collector ${action === 'on' ? 'ON 🟢' : 'OFF 🔴'} ho gaya.\n\n© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ`)
+        if (command === 'on' || command === 'off') {
+            settings.enabled = command === 'on'
+            saveDB(db)
+            return reply(`✅ Link Collector ${settings.enabled ? '🟢 ON' : '🔴 OFF'}\n\n© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ`)
         }
 
-        if (action === 'add') {
-            if (!value || !value.includes('@')) return reply('❌ Usage: .linkcollector add 923xx@s.whatsapp.net\n\n© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ')
-            if (!settings.targetJids.includes(value)) settings.targetJids.push(value)
-            saveDB(settings)
+        if (command === 'add') {
+            if (!value || !value.includes('@')) return reply('⚠️ Usage: `.linkcollector add JID`\n\n© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ')
+            if (!settings.targetJids.includes(value)) {
+                settings.targetJids.push(value)
+                saveDB(db)
+            }
             return reply(`✅ Destination Added\n📍 JID: ${value}\n\n© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ`)
         }
 
-        if (action === 'del' || action === 'remove') {
-            if (!value) return reply('❌ Usage: .linkcollector del JID')
+        if (command === 'del' || command === 'remove') {
+            if (!value) return reply('⚠️ Usage: `.linkcollector del JID`\n\n© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ')
             settings.targetJids = settings.targetJids.filter(j => j !== value)
-            saveDB(settings)
+            saveDB(db)
             return reply(`✅ Destination Removed\n\n© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ`)
         }
 
-        if (action === 'msg') {
+        if (command === 'msg') {
             settings.customMsg = value
-            saveDB(settings)
-            return reply(`✅ Custom Message Updated\n\n© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ`)
+            saveDB(db)
+            return reply(`✅ Message Updated\n\n© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ`)
         }
 
-        if (action === 'links') {
-            if (!settings.links.length) return reply('❌ No Links Saved.\n\n© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ')
-            const output = settings.links.slice(-50).map((item, i) => `┃ ${i + 1}. ${item.link}`).join('\n')
-            return reply(
-`╭━━〔 📥 AHMED-MD SAVED LINKS 〕━━╮
-┃
-${output}
-┃
-┃ Total Saved: ${settings.links.length}
-┃
-╰━━━━━━━━━━━━━━━━━━━━╯
-
-© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ`
-            )
+        if (command === 'links') {
+            if (!db.links.length) return reply('📥 No Links Saved\n\n© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ')
+            const output = db.links.slice(-50).map((item, i) => `${i + 1}. ${item.link}`)
+            return reply(`📥 AHMED-MD LINK COLLECTOR\n\n${output.join('\n')}\n\n📊 Total Saved: ${db.links.length}\n\n© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ`)
         }
 
-        if (action === 'clear') {
-            settings.links = []
-            saveDB(settings)
-            return reply('✅ Links Cleared.\n\n© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ')
+        if (command === 'clear') {
+            db.links = []
+            saveDB(db)
+            return reply('🗑️ Links Cleared\n\n© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ')
         }
 
-        return reply(makePanel(settings))
+        return reply(makePanel(settings, db.links))
 
     } catch (e) {
         console.log('AHMED-MD LINKCOLLECTOR ERROR:', e)
@@ -111,25 +117,20 @@ ${output}
     }
 })
 
-// ─── GROUP LINK HANDLER ───
-// AHMED-MD me 'on text' wala system plugin se nahi hota,
-// ye logic index.js me messages.upsert wali jagah lagana hoga:
-
+// ─── GROUP LINK HANDLER - index.js me lagana hai ───
 /*
-const linkRegex = /https?:\/\/chat\.whatsapp\.com\/[A-Za-z0-9_-]+/gi
-// Har aane wale message pe:
-if (from.endsWith('@g.us')) {
-    const db = JSON.parse(fs.readFileSync('./lib/linkcollector.json', 'utf8'))
-    if (db.enabled && db.targetJids.length) {
-        const links = [...new Set((body.match(linkRegex) || []))]
-        for (const link of links) {
-            if (db.links.some(x => x.link === link)) continue
-            db.links.push({ link, sourceJid: from, timestamp: Date.now() })
-            fs.writeFileSync('./lib/linkcollector.json', JSON.stringify(db, null, 2))
-            const outgoing = `${db.customMsg ? db.customMsg + '\n\n' : ''}🔗 ${link}\n\n📍 Source GC: ${from}\n\n© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ`
-            for (const target of db.targetJids) {
-                await conn.sendMessage(target, { text: outgoing })
-            }
+const db = JSON.parse(fs.readFileSync('./lib/linkcollector.json', 'utf8'))
+const settings = db.settings
+if (settings.enabled && from.endsWith('@g.us')) {
+    const text = m.body || ''
+    const links = text.match(/https?:\/\/chat\.whatsapp\.com\/[A-Za-z0-9_-]+/gi) || []
+    for (const link of links) {
+        if (db.links.some(x => x.link === link)) continue
+        db.links.push({ link, sourceJid: from, timestamp: Date.now() })
+        fs.writeFileSync('./lib/linkcollector.json', JSON.stringify(db, null, 2))
+        const outgoing = [settings.customMsg, `🔗 ${link}`, '', `📍 Source GC: ${from}`, '© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ`].filter(Boolean).join('\n')
+        for (const target of settings.targetJids) {
+            await conn.sendMessage(target, { text: outgoing })
         }
     }
 }
