@@ -6,47 +6,49 @@ const dbPath = path.join(__dirname, '../lib/linkcollector.json')
 
 function loadDB() {
     try {
-        if (!fs.existsSync(dbPath)) return { settings: { enabled: false, targetJids: [], customMsg: '' }, links: [] }
+        if (!fs.existsSync(dbPath)) {
+            return { settings: { enabled: false, targetJids: [], customMsg: '' }, links: [] }
+        }
         return JSON.parse(fs.readFileSync(dbPath, 'utf8'))
-    } catch { return { settings: { enabled: false, targetJids: [], customMsg: '' }, links: [] } }
+    } catch (e) {
+        return { settings: { enabled: false, targetJids: [], customMsg: '' }, links: [] }
+    }
 }
-function saveDB(data) { fs.writeFileSync(dbPath, JSON.stringify(data, null, 2)) }
+
+function saveDB(data) {
+    fs.writeFileSync(dbPath, JSON.stringify(data, null, 2))
+}
 
 function makePanel(settings, savedLinks) {
-    return [
-        '╭━━〔 🔗 AHMED-MD LINK COLLECTOR 〕━━╮',
-        '┃',
-        `┃ Collector Status: ${settings.enabled ? '🟢 ON' : '🔴 OFF'}`,
-        `┃ Destinations: ${settings.targetJids.length}`,
-        `┃ Saved Links: ${savedLinks.length}`,
-        `┃ Custom Message: ${settings.customMsg || 'None'}`,
-        '┃',
-        '┃ 📌 Commands',
-        '┃ ✦ .linkcollector on',
-        '┃ ✦ .linkcollector off',
-        '┃ ✦ .linkcollector add JID',
-        '┃ ✦ .linkcollector del JID',
-        '┃ ✦ .linkcollector msg TEXT',
-        '┃ ✦ .linkcollector links',
-        '┃ ✦ .linkcollector clear',
-        '┃',
-        '╰━━━━━━━━━━━━━━━━━━━━╯',
-        '',
-        '© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ'
-    ].join('\n')
+    return `╭━━〔 🔗 AHMED-MD LINK COLLECTOR 〕━━╮
+┃
+┃ Collector Status: ${settings.enabled ? '🟢 ON' : '🔴 OFF'}
+┃ Destinations: ${settings.targetJids.length}
+┃ Saved Links: ${savedLinks.length}
+┃ Custom Message: ${settings.customMsg || 'None'}
+┃
+┃ 📌 Commands
+┃ ✦ .linkcollector on
+┃ ✦ .linkcollector off
+┃ ✦ .linkcollector add JID
+┃ ✦ .linkcollector del JID
+┃ ✦ .linkcollector msg TEXT
+┃ ✦ .linkcollector links
+┃ ✦ .linkcollector clear
+┃
+╰━━━━━━━━━━━━━━━━━━━━╯
+
+© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ`
 }
 
 cmd({
     pattern: 'linkcollector',
-    desc: 'Link Collector - No Owner Lock',
-    category: 'owner',
+    desc: 'Link Collector',
+    category: 'general',
     react: '🔗',
     filename: __filename
 }, async (conn, mek, m, { from, q, reply }) => {
     try {
-        // ✅ NO OWNER CHECK - Koi bhi chala sakta hai
-        // Is liye ab wo error kabhi nahi ayega
-
         const input = (q || '').trim()
         const parts = input.split(/\s+/)
         const command = (parts.shift() || '').toLowerCase()
@@ -78,13 +80,13 @@ cmd({
             if (!value) return reply('⚠️ Usage: `.linkcollector del JID`\n\n© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ')
             settings.targetJids = settings.targetJids.filter(j => j !== value)
             saveDB(db)
-            return reply(`✅ Destination Removed\n\n© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ`)
+            return reply('✅ Destination Removed\n\n© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ')
         }
 
         if (command === 'msg') {
             settings.customMsg = value
             saveDB(db)
-            return reply(`✅ Message Updated\n\n© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ`)
+            return reply('✅ Message Updated\n\n© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ')
         }
 
         if (command === 'links') {
@@ -96,13 +98,12 @@ cmd({
         if (command === 'clear') {
             db.links = []
             saveDB(db)
-            return reply('🗑️ Links Cleared\n\n© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ`)
+            return reply('🗑️ Links Cleared\n\n© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ')
         }
 
         return reply(makePanel(settings, db.links))
-
     } catch (e) {
         console.log('AHMED-MD LINKCOLLECTOR ERROR:', e)
-        reply(`❌ *Failed*\n\n${e.message}\n\n© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ`)
+        reply(`❌ Failed: ${e.message}\n\n© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ`)
     }
 })
