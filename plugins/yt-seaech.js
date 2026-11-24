@@ -1,41 +1,57 @@
-const config = require('../config')
-const l = console.log
-const { cmd, commands } = require('../command')
-const ytdl = require('yt-search')
-const fs = require('fs-extra')
-var videotime = 60000 // 1000 min
-const { getBuffer, getGroupAdmins, getRandom, h2k, isUrl, Json, runtime, sleep, fetchJson } = require('../lib/functions')
+const { cmd } = require('../command')
+const yts = require('yt-search')
 
 cmd({
-    pattern: "yts",
-    alias: ["ytsearch"],
-    use: '.yts jawad',
-    react: "🔎",
-    desc: "Search and get details from YouTube.",
-    category: "search",
+    pattern: 'yts',
+    alias: ['ytsearch'],
+    desc: 'Search and get details from YouTube.',
+    category: 'search',
+    react: '🔎',
     filename: __filename
-},
-async (conn, mek, m, {
-    from, l, quoted, body, isCmd, umarmd, args, q,
-    isGroup, sender, senderNumber, botNumber2, botNumber,
-    pushname, isMe, isOwner, groupMetadata, groupName,
-    participants, groupAdmins, isBotAdmins, isAdmins, reply
-}) => {
+}, async (conn, mek, m, { from, q, reply }) => {
     try {
-        if (!q) return reply('*Please give me words to search*')
+        if (!q) {
+            return reply(
+`╭━━〔 🔎 AHMED-MD YTS 〕━━╮
+┃
+┃ ✦ .yts Song / Video Name
+┃
+╰━━━━━━━━━━━━━━━━━━━━╯
 
-        let arama = await ytdl(q)
-        let results = arama.all.slice(0, 10) // 🔟 Only the first 10 results
-        let mesaj = ''
+*© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ*`
+            )
+        }
+
+        const search = await yts(q)
+        const results = search.all.slice(0, 10)
+
+        if (!results.length) {
+            return reply('❌ No results found. Try another name.')
+        }
+
+        let mesaj = `╭━━〔 🔎 AHMED-MD YTS 〕━━╮
+┃
+┃ 🔍 *Results for:* ${q}
+┃
+`
 
         results.forEach((video, i) => {
-            mesaj += `*${i + 1}. ${video.title}*\n🔗 ${video.url}\n📺 ${video.timestamp} | 👀 ${video.views} views\n\n`
+            mesaj += `┃
+┃ *${i + 1}. ${video.title}*
+┃ 🔗 ${video.url}
+┃ ⏱️ ${video.timestamp} | 👀 ${video.views} views
+`
         })
 
-        await conn.sendMessage(from, { text: mesaj.trim() }, { quoted: mek })
+        mesaj += `┃
+╰━━━━━━━━━━━━━━━━━━━━╯
+
+*© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ*`
+
+        await conn.sendMessage(from, { text: mesaj }, { quoted: mek })
 
     } catch (e) {
-        l(e)
-        reply('*Error !!*')
+        console.log('AHMED-MD YTS ERROR:', e)
+        reply(`❌ *Search Failed*\n\n${e.message || 'Please try again later.'}\n\n*© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ*`)
     }
 })
