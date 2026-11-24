@@ -1,59 +1,65 @@
+// ═══════════════════════════════════
+//  AHMED-MD | MADE BY AHMED
+//  Command: tagall
+//  Category: group
+// ═══════════════════════════════════
+const { cmd } = require('../command');
 
-const config = require('../config')
-const { cmd, commands } = require('../command')
-const { getBuffer, getRandom, h2k, isUrl, Json, runtime, sleep, fetchJson } = require('../lib/functions')
+// ─── AHMED-MD FOOTER ───
+const FOOTER = `\n\n© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ`;
 
 cmd({
     pattern: "tagall",
+    alias: ["gc_tagall", "tag"],
     react: "🔊",
-    alias: ["gc_tagall"],
-    desc: "To Tag all Members",
+    desc: "To tag all members",
     category: "group",
     use: '.tagall [message]',
     filename: __filename
 },
-async (conn, mek, m, { from, participants, reply, isGroup, isAdmins, isCreator, prefix, command, args, body }) => {
+async (conn, mek, m, { from, participants, reply, isGroup, isAdmins, isCreator, args }) => {
     try {
-        // ✅ Group check
+        // ─── GROUP CHECK ───
         if (!isGroup) {
-            await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
-            return reply("❌ This command can only be used in groups.");
+            await conn.sendMessage(from, { react: { text: '❌', key: mek.key } });
+            return reply(`This command can only be used in groups.${FOOTER}`);
         }
 
-        // ✅ Permission check (Admin OR Bot Owner)
+        // ─── PERMISSION CHECK ───
         if (!isAdmins && !isCreator) {
-            await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
-            return reply("❌ Only group admins or the bot owner can use this command.");
+            await conn.sendMessage(from, { react: { text: '❌', key: mek.key } });
+            return reply(`Only group admins or the bot owner can use this command.${FOOTER}`);
         }
 
-        // ✅ Fetch group info
+        // ─── GROUP INFO ───
         let groupInfo = await conn.groupMetadata(from).catch(() => null);
-        if (!groupInfo) return reply("❌ Failed to fetch group information.");
+        if (!groupInfo) return reply(`Failed to fetch group information.${FOOTER}`);
 
         let groupName = groupInfo.subject || "Unknown Group";
         let totalMembers = participants ? participants.length : 0;
-        if (totalMembers === 0) return reply("❌ No members found in this group.");
+        if (totalMembers === 0) return reply(`No members found in this group.${FOOTER}`);
 
-        let emojis = ['📢', '🔊', '🌐', '🔰', '❤‍🩹', '🤍', '🖤', '🩵', '📝', '💗', '🔖', '🪩', '📦', '🎉', '🛡️', '💸', '⏳', '🗿', '🚀', '🎧', '🪀', '⚡', '🚩', '🍁', '🗣️', '👻', '⚠️', '🔥'];
-        let randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
+        let emojis = ['📢', '🔊', '🌐', '🔰', '❤️', '🤍', '🖤', '🩵', '📝', '💗', '🔖', '🪩', '📦', '🎉', '🛡️', '💸', '⏳', '🗿', '🚀', '🎧', '🪀', '⚡', '🚩', '🍁', '🗣️', '👻', '⚠️', '🔥'];
 
-        // ✅ Extract message
-        let message = body.slice(body.indexOf(command) + command.length).trim();
+        // ─── MESSAGE ───
+        let message = args.join(" ").trim();
         if (!message) message = "Attention Everyone";
 
-        let teks = `▢ Group : *${groupName}*\n▢ Members : *${totalMembers}*\n▢ Message: *${message}*\n\n┌───⊷ *MENTIONS*\n`;
+        // ─── TEXT - AHMED-MD STYLE ───
+        let teks = `*Group:* ${groupName}\n*Members:* ${totalMembers}\n*Message:* ${message}\n\n*MENTIONS*\n`;
 
         for (let mem of participants) {
             if (!mem.id) continue;
+            let randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
             teks += `${randomEmoji} @${mem.id.split('@')[0]}\n`;
         }
 
-        teks += "└──✪ AHMED┃MD ✪──";
+        teks += FOOTER;
 
-        conn.sendMessage(from, { text: teks, mentions: participants.map(a => a.id) }, { quoted: mek });
+        await conn.sendMessage(from, { text: teks, mentions: participants.map(a => a.id) }, { quoted: mek });
 
     } catch (e) {
-        console.error("TagAll Error:", e);
-        reply(`❌ *Error Occurred !!*\n\n${e.message || e}`);
+        console.error("AHMED-MD TagAll Error:", e);
+        await reply(`Error Occurred!\n\n${e.message || e}${FOOTER}`);
     }
 });
