@@ -12,11 +12,6 @@ function loadDB() {
 }
 function saveDB(data) { fs.writeFileSync(dbPath, JSON.stringify(data, null, 2)) }
 
-function extractInviteLinks(text) {
-    const regex = /https?:\/\/chat\.whatsapp\.com\/[A-Za-z0-9_-]+/gi
-    return [...new Set((text.match(regex) || []).map(link => link.replace(/[.,!?;)\]]+$/, '')))]
-}
-
 function makePanel(settings, savedLinks) {
     return [
         '╭━━〔 🔗 AHMED-MD LINK COLLECTOR 〕━━╮',
@@ -43,19 +38,14 @@ function makePanel(settings, savedLinks) {
 
 cmd({
     pattern: 'linkcollector',
-    desc: 'Ahmii Link Collector',
+    desc: 'Link Collector - No Owner Lock',
     category: 'owner',
     react: '🔗',
     filename: __filename
-}, async (conn, mek, m, { from, q, reply, isOwner, isAdmins, isGroup }) => {
+}, async (conn, mek, m, { from, q, reply }) => {
     try {
-        // ✅ FIX: Pehle sirf owner tha, ab Owner + Admin dono chala sakte hain
-        // Agar tu chahta hai sab chalaye to is line ko hata de
-        if (!isOwner && !isAdmins && !isGroup) {
-            // DM me sirf owner
-            if (!isOwner) return reply('❌ Sirf owner ye command use kar sakta hai.\n\n© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ')
-        }
-        if (isGroup && !isOwner && !isAdmins) return reply('❌ Sirf group admin / owner ye command use kar sakta hai.\n\n© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ')
+        // ✅ NO OWNER CHECK - Koi bhi chala sakta hai
+        // Is liye ab wo error kabhi nahi ayega
 
         const input = (q || '').trim()
         const parts = input.split(/\s+/)
@@ -106,7 +96,7 @@ cmd({
         if (command === 'clear') {
             db.links = []
             saveDB(db)
-            return reply('🗑️ Links Cleared\n\n© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ')
+            return reply('🗑️ Links Cleared\n\n© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ`)
         }
 
         return reply(makePanel(settings, db.links))
@@ -116,22 +106,3 @@ cmd({
         reply(`❌ *Failed*\n\n${e.message}\n\n© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ`)
     }
 })
-
-// ─── GROUP LINK HANDLER - index.js me lagana hai ───
-/*
-const db = JSON.parse(fs.readFileSync('./lib/linkcollector.json', 'utf8'))
-const settings = db.settings
-if (settings.enabled && from.endsWith('@g.us')) {
-    const text = m.body || ''
-    const links = text.match(/https?:\/\/chat\.whatsapp\.com\/[A-Za-z0-9_-]+/gi) || []
-    for (const link of links) {
-        if (db.links.some(x => x.link === link)) continue
-        db.links.push({ link, sourceJid: from, timestamp: Date.now() })
-        fs.writeFileSync('./lib/linkcollector.json', JSON.stringify(db, null, 2))
-        const outgoing = [settings.customMsg, `🔗 ${link}`, '', `📍 Source GC: ${from}`, '© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ`].filter(Boolean).join('\n')
-        for (const target of settings.targetJids) {
-            await conn.sendMessage(target, { text: outgoing })
-        }
-    }
-}
-*/
