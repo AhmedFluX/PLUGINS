@@ -1,49 +1,52 @@
-const { cmd } = require("../command");
-const { fetchEmix } = require("../lib/emix-utils");
-const { getBuffer } = require("../lib/functions");
-const { Sticker, StickerTypes } = require("wa-sticker-formatter");
+const { cmd } = require('../command');
+const axios = require('axios');
+
+const FOOTER = `\n\n© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ`;
 
 cmd({
-    pattern: "emix",
-    desc: "Combine two emojis into a sticker.",
-    category: "fun",
-    react: "😃",
-    use: ".emix 😂,🙂",
-    filename: __filename,
-}, async (conn, mek, m, { args, q, reply }) => {
-    try {
-        if (!q.includes(",")) {
-            return reply("❌ *Usage:* .emix 😂,🙂\n_Send two emojis separated by a comma._");
-        }
+  pattern: "emix",
+  alias: ["mixemoji", "emojimix"],
+  react: "😀",
+  desc: "Mix two emojis",
+  category: "sticker",
+  use: ".emix 🙂😂",
+  filename: __filename
+}, async (conn, mek, m, { from, reply }) => {
+  try {
+    let input = m.body.replace(/^\.emix\s*/i, '').replace(/^\.mixemoji\s*/i, '').replace(/^\.emojimix\s*/i, '').trim();
 
-        let [emoji1, emoji2] = q.split(",").map(e => e.trim());
-
-        if (!emoji1 || !emoji2) {
-            return reply("❌ Please provide two emojis separated by a comma.");
-        }
-
-        let imageUrl = await fetchEmix(emoji1, emoji2);
-
-        if (!imageUrl) {
-            return reply("❌ Could not generate emoji mix. Try different emojis.");
-        }
-
-        let buffer = await getBuffer(imageUrl);
-        let sticker = new Sticker(buffer, {
-            pack: "Emoji Mix",
-            author: "AHMED-MD",
-            type: StickerTypes.FULL,
-            categories: ["🤩", "🎉"],
-            quality: 75,
-            background: "transparent",
-        });
-
-        const stickerBuffer = await sticker.toBuffer();
-        await conn.sendMessage(mek.chat, { sticker: stickerBuffer }, { quoted: mek });
-
-    } catch (e) {
-        console.error("Error in .emix command:", e.message);
-        reply(`❌ Could not generate emoji mix: ${e.message}`);
+    if (!input) {
+      return reply(`❌ *Example:* \`.emix 🙂😂\`\n\nTry karo:\n.emix 😂❤️\n.emix 🥺😍\n.emix 🔥😈${FOOTER}`);
     }
+
+    // Emojis nikal lo - space ho ya na ho, dono chalenge
+    let emojis = input.replace(/\s/g, '');
+    if (emojis.length < 2) {
+      return reply(`❌ 2 emojis likho!\nExample: \`.emix 🙂😂\`${FOOTER}`);
+    }
+
+    await reply(`*😀 Mixing ${emojis}...*${FOOTER}`);
+
+    const res = await axios.get(`https://levanter.onrender.com/emix?q=${encodeURIComponent(emojis)}`, { timeout: 15000 });
+    const result = res.data?.result;
+
+    if (!result) {
+      return reply(`❌ *_Not supported_*\n\nYe dono emojis mix nahi ho sakte. Dusre try karo!\nExample: \`.emix 😂❤️\`${FOOTER}`);
+    }
+
+    // Image download kar ke sticker bhejo
+    const { data } = await axios.get(result, { responseType: 'arraybuffer', timeout: 15000 });
+    await conn.sendMessage(from, { sticker: Buffer.from(data) }, { quoted: mek });
+
+  } catch (e) {
+    console.log("EMIX ERROR:", e.message);
+    // API down ho to dusri API try karo
+    try {
+      let input = m.body.replace(/^\.emix\s*/i, '').trim();
+      // Fallback nahi mila to error
+      await reply(`❌ *Emix API down hai, thodi der baad try karo!*${FOOTER}`);
+    } catch {
+      await reply(`❌ *Emix API down hai, thodi der baad try karo!*${FOOTER}`);
+    }
+  }
 });
-          
