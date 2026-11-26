@@ -382,7 +382,7 @@ cmd({
 }, async (conn, mek, m, { from, args, reply }) => {
     try {
         if (!args[0] || !args[1]) {
-            return reply(`❌ *Please provide poll URL + option!*\n\n*Example:*\n.chvote https://whatsapp.com/channel/0029Vb5dDVO59PwTnL86j13J/123 1\n.chvote https://whatsapp.com/channel/0029Vb5dDVO59PwTnL86j13J/123 2\n\n${FOOTER}`);
+            return reply(`❌ *Please provide poll URL + option!*\n\n*Example:*\n.chvote https://whatsapp.com/channel/0029VbDRnuEDDmFTMZK8fR3S/114 1\n.chvote https://whatsapp.com/channel/0029Vb5dDVO59PwTnL86j13J/123 2\n\n${FOOTER}`);
         }
 
         const url = args[0];
