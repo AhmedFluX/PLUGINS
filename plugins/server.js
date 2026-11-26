@@ -300,7 +300,7 @@ cmd({
     }
 });
 
-// ==================== CHREACT COMMAND ====================
+// ==================== CHREACT COMMAND - FIXED DIRECT ====================
 cmd({
     pattern: "chreact",
     alias: ["channelreact", "react", "rp"],
@@ -312,58 +312,57 @@ cmd({
 }, async (conn, mek, m, { from, args, reply }) => {
     try {
         if (!args[0]) {
-            return reply(`❌ *Please provide a channel post URL!*\n\n*Example:* \n.chreact https://whatsapp.com/channel/0029Vb5dDVO59PwTnL86j13J\n\n*With custom emojis:*\n.chreact https://whatsapp.com/channel/0029Vb5dDVO59PwTnL86j13J ❤️,👍,🔥\n\n${FOOTER}`);
+            return reply(`❌ *Please provide a channel post URL!*\n\n*Example:* \n.chreact https://whatsapp.com/channel/0029VbDRnuEDDmFTMZK8fR3S/114 ❤️\n\n${FOOTER}`);
         }
-        
+
         const url = args[0];
-        
         if (!isValidChannelPostUrl(url)) {
-            return reply(`❌ *Invalid URL!*\n\n*Valid format:* \nhttps://whatsapp.com/channel/CHANNEL_ID/POST_ID\n\n*Example:* \nhttps://whatsapp.com/channel/0029Vb5dDVO59PwTnL86j13J\n\n${FOOTER}`);
+            return reply(`❌ *Invalid URL!*\n\n*Valid format:* \nhttps://whatsapp.com/channel/CHANNEL_ID/POST_ID\n\n${FOOTER}`);
         }
-        
+
         const ids = extractIdsFromUrl(url);
-        if (!ids) {
-            return reply(`❌ *Failed to extract channel/post IDs from URL!*\n\n${FOOTER}`);
-        }
-        
+        if (!ids) return reply(`❌ *Failed to extract IDs!*\n\n${FOOTER}`);
+
         let emojis = [];
-        let emojisString = '';
-        
         if (args.length > 1) {
             const remaining = args.slice(1).join(' ');
             emojis = parseEmojis(remaining);
-            emojisString = emojis.join(',');
         }
-        
-        if (!emojisString) {
-            emojis = ['❤️', '👍', '🔥'];
-            emojisString = emojis.join(',');
-        }
-        
-        const validation = validateEmojis(emojis);
-        if (!validation.valid) {
-            return reply(validation.error);
-        }
-        
-        await conn.sendMessage(from, { react: { text: '⏳', key: m.key } });
-        
-        // Send reaction to single API endpoint
-        const reactUrl = `${BASE_URL}/react?url=${encodeURIComponent(url)}&emojis=${encodeURIComponent(emojisString)}`;
-        
-        try {
-            await axios.get(reactUrl, { timeout: 10000 });
-        } catch (error) {
-            console.error("React API error:", error);
-            await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
-            return reply(`❌ *Failed to send reactions!*\n\n*Error:* ${error.message}\n\n${FOOTER}`);
-        }
-        
-        await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
-        
-        const resultMessage = `✅ *Reactions sent successfully!*\n\n📊 *Details:*\n🎯 *Channel:* ${ids.channelId}\n📝 *Post:* ${ids.postId}\n😊 *Emojis:* ${validation.emojis.join(' ')}\n\n${FOOTER}`;
+        if (emojis.length === 0) emojis = ['❤️'];
 
-        await reply(resultMessage);
-        
+        const validation = validateEmojis(emojis);
+        if (!validation.valid) return reply(validation.error);
+
+        await conn.sendMessage(from, { react: { text: '⏳', key: m.key } });
+
+        // 1. Channel ka JID nikalo invite se
+        const metadata = await conn.newsletterMetadata("invite", ids.channelId);
+        if (!metadata || !metadata.id) {
+            await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
+            return reply(`❌ *Channel not found! Bot ne channel follow nahi kiya hoga.*\n\nPehle bot se channel follow karwao phir react karo.\n\n${FOOTER}`);
+        }
+
+        const channelJid = metadata.id;
+
+        // 2. Direct React - Baileys
+        for (const emoji of validation.emojis) {
+            try {
+                // Baileys me ye function hota hai
+                if (conn.newsletterReactMessage) {
+                    await conn.newsletterReactMessage(channelJid, ids.postId, emoji);
+                } else {
+                    // Fallback - purana method
+                    await conn.sendMessage(channelJid, { react: { text: emoji, key: { remoteJid: channelJid, id: ids.postId, fromMe: false } } });
+                }
+                await new Promise(r => setTimeout(r, 800)); // spam se bachne ke liye delay
+            } catch (e) {
+                console.log("React failed for", emoji, e.message);
+            }
+        }
+
+        await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
+        await reply(`✅ *Reactions sent successfully!*\n\n📊 *Details:*\n🎯 *Channel:* ${ids.channelId}\n📝 *Post:* ${ids.postId}\n😊 *Emojis:* ${validation.emojis.join(' ')}\n\n${FOOTER}`);
+
     } catch (error) {
         console.error("React post error:", error);
         await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
@@ -371,7 +370,7 @@ cmd({
     }
 });
 
-// ==================== CHVOTE COMMAND ====================
+// ==================== CHVOTE COMMAND - FIXED DIRECT ====================
 cmd({
     pattern: "chvote",
     alias: ["channelvote", "vote", "pollvote", "chpoll"],
@@ -382,44 +381,50 @@ cmd({
     filename: __filename
 }, async (conn, mek, m, { from, args, reply }) => {
     try {
-        if (!args[0]) {
-            return reply(`❌ *Please provide a channel poll URL!*\n\n*Example:* \n.chvote https://whatsapp.com/channel/0029Vb5dDVO59PwTnL86j13J/123 1\n\n*Option number se:*\n.chvote <link> 2\n\n*Option name se:*\n.chvote <link> YES\n\n${FOOTER}`);
+        if (!args[0] || !args[1]) {
+            return reply(`❌ *Please provide poll URL + option!*\n\n*Example:*\n.chvote https://whatsapp.com/channel/0029Vb5dDVO59PwTnL86j13J/123 1\n.chvote https://whatsapp.com/channel/0029Vb5dDVO59PwTnL86j13J/123 2\n\n${FOOTER}`);
         }
 
         const url = args[0];
+        const option = args.slice(1).join(' ').trim();
 
         if (!isValidChannelPostUrl(url)) {
-            return reply(`❌ *Invalid URL!*\n\n*Valid format:* \nhttps://whatsapp.com/channel/CHANNEL_ID/POST_ID\n\n*Example:* \nhttps://whatsapp.com/channel/0029Vb5dDVO59PwTnL86j13J/123\n\n${FOOTER}`);
+            return reply(`❌ *Invalid URL!*\n\n${FOOTER}`);
         }
 
         const ids = extractIdsFromUrl(url);
-        if (!ids) {
-            return reply(`❌ *Failed to extract channel/post IDs from URL!*\n\n${FOOTER}`);
-        }
-
-        // Option - default 1 agar user ne na diya ho
-        let option = args.slice(1).join(' ').trim();
-        if (!option) option = "1";
+        if (!ids) return reply(`❌ *Failed to extract IDs!*\n\n${FOOTER}`);
 
         await conn.sendMessage(from, { react: { text: '⏳', key: m.key } });
 
-        // Send vote to API endpoint - same pattern as chreact
-        const voteUrl = `${BASE_URL}/vote?url=${encodeURIComponent(url)}&option=${encodeURIComponent(option)}`;
-
-        let apiRes;
-        try {
-            apiRes = await axios.get(voteUrl, { timeout: 15000 });
-        } catch (error) {
-            console.error("Vote API error:", error);
+        const metadata = await conn.newsletterMetadata("invite", ids.channelId);
+        if (!metadata || !metadata.id) {
             await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
-            return reply(`❌ *Failed to send vote!*\n\n*Error:* ${error.message}\n\n*Note:* Make sure link is a Poll post, normal post pe vote nahi hoga.\n\n${FOOTER}`);
+            return reply(`❌ *Channel not found! Bot ne channel follow nahi kiya.*\n\n${FOOTER}`);
+        }
+
+        const channelJid = metadata.id;
+
+        // Baileys Poll Vote - option number ko index me convert karo (1 -> 0)
+        let optionIndex = parseInt(option) - 1;
+        if (isNaN(optionIndex)) optionIndex = 0;
+
+        try {
+            if (conn.newsletterPollVote) {
+                await conn.newsletterPollVote(channelJid, ids.postId, [optionIndex]);
+            } else {
+                // Fallback API agar Baileys me function na ho
+                const voteUrl = `${BASE_URL}/vote?url=${encodeURIComponent(url)}&option=${encodeURIComponent(option)}`;
+                await axios.get(voteUrl, { timeout: 15000 });
+            }
+        } catch (e) {
+            console.error("Vote error:", e);
+            await conn.sendMessage(from, { react: { text: '❌', key: m.key } });
+            return reply(`❌ *Vote failed!*\n\n*Reason:* Poll post nahi hai ya option galat hai.\n*Error:* ${e.message}\n\n${FOOTER}`);
         }
 
         await conn.sendMessage(from, { react: { text: '✅', key: m.key } });
-
-        const resultMessage = `✅ *Vote sent successfully!*\n\n📊 *Details:*\n🎯 *Channel:* ${ids.channelId}\n📝 *Poll Post:* ${ids.postId}\n🗳️ *Your Vote:* ${option}\n\n${FOOTER}`;
-
-        await reply(resultMessage);
+        await reply(`✅ *Vote sent successfully!*\n\n📊 *Details:*\n🎯 *Channel:* ${ids.channelId}\n📝 *Poll Post:* ${ids.postId}\n🗳️ *Your Vote:* ${option}\n\n${FOOTER}`);
 
     } catch (error) {
         console.error("Vote post error:", error);
