@@ -13,6 +13,13 @@ const {
 const { cmd } = require('../command')
 const StickerMaker = require('../lib/sticker-maker')
 
+// FFmpeg and FFprobe paths
+const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path
+const ffprobePath = require('@ffprobe-installer/ffprobe').path
+
+ffmpeg.setFfmpegPath(ffmpegPath)
+ffmpeg.setFfprobePath(ffprobePath)
+
 const STICKER_SECONDS = 15
 const TEMP_DIR = path.join(os.tmpdir(), 'ahmed-md-astik')
 
@@ -39,6 +46,7 @@ const USAGE =
 const tempName = () =>
     `astik-${crypto.randomBytes(6).toString('hex')}`
 
+// Extend Baileys message encoding
 const addAudioStickerFields = () => {
     const { Message } = proto
 
@@ -51,7 +59,10 @@ const addAudioStickerFields = () => {
 
         if (m.audioStickerMessage != null) {
             Message.FutureProofMessage
-                .encode(m.audioStickerMessage, w.uint32(1074).fork())
+                .encode(
+                    m.audioStickerMessage,
+                    w.uint32(1074).fork()
+                )
                 .ldelim()
         }
 
@@ -76,6 +87,7 @@ const addAudioStickerFields = () => {
     Message.StickerMessage.prototype.audioMessage = null
 }
 
+// Check whether media contains audio
 const hasAudio = (file) =>
     new Promise((resolve, reject) => {
         ffmpeg.ffprobe(file, (error, metadata) => {
@@ -89,6 +101,7 @@ const hasAudio = (file) =>
         })
     })
 
+// Convert audio/video to Opus
 const toOpus = (input, output, seconds) =>
     new Promise((resolve, reject) => {
         const command = ffmpeg(input)
@@ -102,18 +115,38 @@ const toOpus = (input, output, seconds) =>
                 '-f', 'ogg'
             ])
 
-        if (seconds) command.duration(seconds)
+        if (seconds) {
+            command.duration(seconds)
+        }
 
         command
-            .on('error', error =>
+            .on('error', error => {
                 reject(new Error(`FFmpeg: ${error.message}`))
-            )
+            })
             .on('end', () => {
-                resolve(fs.readFileSync(output))
+                try {
+                    resolve(fs.readFileSync(output))
+                } catch (error) {
+                    reject(error)
+                }
             })
             .save(output)
     })
 
+// Download quoted media
+const downloadMedia = async (conn, quoted) => {
+    if (typeof quoted.download === 'function') {
+        return await quoted.download()
+    }
+
+    if (typeof conn.downloadMediaMessage === 'function') {
+        return await conn.downloadMediaMessage(quoted)
+    }
+
+    throw new Error('Media download function not available.')
+}
+
+// Upload audio as WhatsApp voice note
 const uploadVoice = async (conn, file, seconds) => {
     const output = path.join(TEMP_DIR, `${tempName()}.ogg`)
 
@@ -137,6 +170,7 @@ const uploadVoice = async (conn, file, seconds) => {
     }
 }
 
+// Send combined audio sticker
 const sendAudioSticker = async (
     conn,
     from,
@@ -184,6 +218,8 @@ cmd({
     const type = quoted.mtype
     const saveKey = `${from}:${sender}`
 
+    let file
+
     try {
         // Add saved audio to a sticker
         if (type === 'stickerMessage') {
@@ -196,17 +232,74 @@ cmd({
                 )
             }
 
+            const stickerMessage =
+                quoted.msg ||
+                quoted.message?.stickerMessage ||
+                quoted
+
             const {
                 contextInfo,
-                mtype,
-                id,
-                chat,
-                sender: quotedSender,
-                fromMe,
-                text,
-                mentionedJid,
-                ...stickerMessage
-            } = quoted
+                ...cleanSticker
+            } = stickerMessage
+
+            await sendAudioSticker(
+                conn,
+                from,
+                cleanSticker,
+                audioMessage
+            )
+
+            return
+        }
+
+        // Save audio from a voice note or song
+        if (type === 'audioMessage') {
+            file = path.join(TEMP_DIR, tempName())
+
+            const audio = await downloadMedia(conn, quoted)
+            fs.writeFileSync(file, audio)
+
+            const audioMessage = await uploadVoice(
+                conn,
+                file
+            )
+
+            saved.set(saveKey, audioMessage)
+
+            return reply(
+                '✅ *Audio Saved Successfully!*\n\n' +
+                'Now reply to any sticker with .astik to add the audio.'
+            )
+        }
+
+        // Create audio sticker from a video
+        if (type === 'videoMessage') {
+            file = path.join(TEMP_DIR, `${tempName()}.mp4`)
+
+            const video = await downloadMedia(conn, quoted)
+            fs.writeFileSync(file, video)
+
+            if (!(await hasAudio(file))) {
+                return reply('❌ This video does not contain audio.')
+            }
+
+            const audioMessage = await uploadVoice(
+                conn,
+                file,
+                STICKER_SECONDS
+            )
+
+            const webp = await StickerMaker.videoToWebp(video)
+
+            const { stickerMessage } = await prepareWAMessageMedia(
+                {
+                    sticker: webp,
+                    isAnimated: true
+                },
+                {
+                    upload: conn.waUploadToServer
+                }
+            )
 
             await sendAudioSticker(
                 conn,
@@ -218,75 +311,6 @@ cmd({
             return
         }
 
-        // Save audio from voice note or song
-        if (type === 'audioMessage') {
-            const file = path.join(TEMP_DIR, tempName())
-
-            try {
-                const audio = await conn.downloadMediaMessage(quoted)
-
-                fs.writeFileSync(file, audio)
-
-                const audioMessage = await uploadVoice(
-                    conn,
-                    file
-                )
-
-                saved.set(saveKey, audioMessage)
-
-                return reply(
-                    '✅ *Audio Saved Successfully!*\n\n' +
-                    'Now reply to any sticker with .astik to add the audio.'
-                )
-            } finally {
-                fs.rmSync(file, { force: true })
-            }
-        }
-
-        // Create audio sticker from video
-        if (type === 'videoMessage') {
-            const file = path.join(TEMP_DIR, `${tempName()}.mp4`)
-
-            try {
-                const video = await conn.downloadMediaMessage(quoted)
-
-                fs.writeFileSync(file, video)
-
-                if (!(await hasAudio(file))) {
-                    return reply('❌ This video does not contain audio.')
-                }
-
-                const audioMessage = await uploadVoice(
-                    conn,
-                    file,
-                    STICKER_SECONDS
-                )
-
-                const webp = await StickerMaker.videoToWebp(video)
-
-                const { stickerMessage } = await prepareWAMessageMedia(
-                    {
-                        sticker: webp,
-                        isAnimated: true
-                    },
-                    {
-                        upload: conn.waUploadToServer
-                    }
-                )
-
-                await sendAudioSticker(
-                    conn,
-                    from,
-                    stickerMessage,
-                    audioMessage
-                )
-
-                return
-            } finally {
-                fs.rmSync(file, { force: true })
-            }
-        }
-
         return reply(USAGE)
 
     } catch (error) {
@@ -295,5 +319,10 @@ cmd({
         return reply(
             `❌ *ASTIK ERROR*\n\n${error.message || 'Something went wrong.'}`
         )
+
+    } finally {
+        if (file) {
+            fs.rmSync(file, { force: true })
+        }
     }
 })
