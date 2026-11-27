@@ -81,7 +81,6 @@ async function addPackMetadata(buffer) {
         metadata
     ])
 
-    // Replace EXIF only, not image frames.
     const output = await image.save(null, {
         exif
     })
@@ -269,7 +268,11 @@ cmd({
     filename: __filename
 }, async (conn, mek, m, context) => {
 
-    const { from, sender, reply } = context
+    const { from, sender, reply, react } = context
+
+    // Working reaction
+    await react('🔖')
+
     const quoted = m.quoted
 
     if (!quoted || !quoted.mtype) {
