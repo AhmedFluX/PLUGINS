@@ -14,6 +14,7 @@ const {
 
 // SETTINGS
 const PACKNAME = '— ˹˱𝐀𝅦 𝐇𝅦 𝐌𝅦 𝟑𝅦 𝐃𝅦˲˺ • 率'
+const AUTHOR = 'AHMED'
 const STICKER_SECONDS = 35
 
 const TEMP_DIR = path.join(os.tmpdir(), 'ahmed-md-astik')
