@@ -17,7 +17,7 @@ const StickerMaker = require('../lib/sticker-maker')
 const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path
 ffmpeg.setFfmpegPath(ffmpegPath)
 
-const STICKER_SECONDS = 15
+const STICKER_SECONDS = 35
 
 const PACK_NAME = '— ˹˱𝐀𝅦 𝐇𝅦 𝐌𝅦 𝟑𝅦 𝐃𝅦˲˺ • 率'
 
