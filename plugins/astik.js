@@ -46,8 +46,7 @@ const tempName = () =>
     `astik-${crypto.randomBytes(6).toString('hex')}`
 
 
-// Add only sticker pack metadata.
-// Original WebP frames and animation are preserved.
+// Add pack metadata without re-encoding WebP frames
 async function addPackMetadata(buffer) {
     const image = new WebP.Image()
 
@@ -75,19 +74,33 @@ async function addPackMetadata(buffer) {
     const length = Buffer.alloc(4)
     length.writeUIntLE(metadata.length, 0)
 
-    const exif = Buffer.concat([
+    image.exif = Buffer.concat([
         header,
         length,
         metadata
     ])
 
-    const output = await image.save(null, {
-        exif
-    })
+    const outputPath = path.join(
+        TEMP_DIR,
+        `${tempName()}.webp`
+    )
 
-    return {
-        buffer: output,
-        isAnimated
+    try {
+        // Save to a real file instead of expecting a Buffer return
+        await image.save(outputPath)
+
+        const output = fs.readFileSync(outputPath)
+
+        if (!Buffer.isBuffer(output) || !output.length) {
+            throw new Error('Sticker metadata output is empty.')
+        }
+
+        return {
+            buffer: output,
+            isAnimated
+        }
+    } finally {
+        fs.rmSync(outputPath, { force: true })
     }
 }
 
@@ -153,7 +166,6 @@ async function uploadVoice(conn, file, seconds) {
         )
 
         return audioMessage
-
     } finally {
         fs.rmSync(output, { force: true })
     }
@@ -270,7 +282,7 @@ cmd({
 
     const { from, sender, reply, react } = context
 
-    // Working reaction
+    // Command reaction
     await react('🔖')
 
     const quoted = m.quoted
@@ -313,7 +325,7 @@ cmd({
 
             fs.writeFileSync(file, originalSticker)
 
-            // Only EXIF changes. Original animation stays intact.
+            // Preserve original WebP frames and update only metadata
             const stickerMessage = await uploadSticker(
                 conn,
                 originalSticker
@@ -374,7 +386,6 @@ cmd({
 
             fs.writeFileSync(file, video)
 
-            // Original working video conversion
             const audioMessage = await uploadVoice(
                 conn,
                 file,
