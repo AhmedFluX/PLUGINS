@@ -4,10 +4,13 @@ const path = require('path')
 const { randomBytes } = require('crypto')
 const ffmpeg = require('fluent-ffmpeg')
 const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg')
+const ffprobeInstaller = require('@ffprobe-installer/ffprobe')
 const { prepareWAMessageMedia } = require('@whiskeysockets/baileys')
 const webp = require('node-webpmux')
 
+// ===== HEROKU FIX: ffmpeg + ffprobe dono ka path set kar diya =====
 ffmpeg.setFfmpegPath(ffmpegInstaller.path)
+ffmpeg.setFfprobePath(ffprobeInstaller.path)
 
 // ============ YOUR STICKER PACK NAME ============
 const PACKNAME = "— ˹˱𝐀𝅦 𝐇𝅦 𝐌𝅦 𝟑𝅦 𝐃𝅦˲˺ • 率"
