@@ -1,130 +1,164 @@
-const { cmd } = require('../command');
-const fs = require('fs');
-const path = require('path');
-const { exec } = require('child_process');
-const { downloadContentFromMessage } = require('@whiskeysockets/baileys');
+const { cmd } = require('../command')
+const fs = require('fs')
+const path = require('path')
+const { randomBytes } = require('crypto')
+const ffmpeg = require('fluent-ffmpeg')
+const ffmpegInstaller = require('@ffmpeg-installer/ffmpeg')
+const { prepareWAMessageMedia } = require('@whiskeysockets/baileys')
+const webp = require('node-webpmux')
 
-const FOOTER = `\n\n© 𝐏oᴡᴇʀᴇᴅ 𝐁ʏ 𝐀нᴍᴇᴅ`;
-const savedAudio = new Map();
+ffmpeg.setFfmpegPath(ffmpegInstaller.path)
 
-function execPromise(command) {
-  return new Promise((resolve) => {
-    exec(command, (err) => {
-      if (err) return resolve(false);
-      resolve(true);
-    });
-  });
+// ============ YOUR STICKER PACK NAME ============
+const PACKNAME = "— ˹˱𝐀𝅦 𝐇𝅦 𝐌𝅦 𝟑𝅦 𝐃𝅦˲˺ • 率"
+const AUTHOR = "AHMED-MD"
+// ================================================
+
+// CHANGED: 15 -> 40 SECONDS
+const STICKER_SECONDS = 40
+const saved = new Map()
+const tempName = () => `asticker-${randomBytes(6).toString('hex')}`
+const TEMP = path.join(__dirname, '../temp')
+if (!fs.existsSync(TEMP)) fs.mkdirSync(TEMP, { recursive: true })
+
+// Add Pack Name / Author EXIF to WebP so it shows your pack name
+async function addExif(webpBuffer, packname, author) {
+    try {
+        const img = new webp.Image()
+        await img.load(webpBuffer)
+        const json = {
+            "sticker-pack-id": "ahmed-md-asticker",
+            "sticker-pack-name": packname,
+            "sticker-pack-publisher": author,
+            "sticker-pack-publisher-email": "",
+            "sticker-pack-publisher-website": "",
+            "android-app-store-link": "",
+            "ios-app-store-link": "",
+            "emojis": ["🎧"]
+        }
+        const exifAttr = Buffer.from([0x49, 0x49, 0x2A, 0x00, 0x08, 0x00, 0x00, 0x00, 0x01, 0x00, 0x41, 0x57, 0x07, 0x00, 0x00, 0x00, 0x00, 0x00, 0x16, 0x00, 0x00, 0x00])
+        const jsonBuffer = Buffer.from(JSON.stringify(json), 'utf-8')
+        const exif = Buffer.concat([exifAttr, jsonBuffer])
+        exif.writeUIntLE(jsonBuffer.length, 14, 4)
+        img.exif = exif
+        return await img.save(null)
+    } catch (e) {
+        console.log('EXIF FAIL, returning original webp:', e.message)
+        return webpBuffer
+    }
 }
 
-async function downloadQuotedMedia(quotedMsg, type) {
-  const stream = await downloadContentFromMessage(quotedMsg, type);
-  let buffer = Buffer.from([]);
-  for await (const chunk of stream) buffer = Buffer.concat([buffer, chunk]);
-  return buffer;
-}
+const toOpus = (input, output, seconds) =>
+  new Promise((resolve, reject) => {
+    const c = ffmpeg(input).noVideo().outputOptions([
+        '-map_metadata', '-1', '-c:a', 'libopus',
+        '-ac', '1', '-ar', '48000', '-b:a', '64k', '-f', 'ogg',
+      ])
+    if (seconds) c.duration(seconds)
+    c.on('error', reject).on('end', () => resolve(fs.readFileSync(output))).save(output)
+  })
 
-function getQuoted(mek, m) {
-  if (m.quoted) return m.quoted;
-  if (m.msg?.contextInfo?.quotedMessage) {
-    let q = m.msg.contextInfo.quotedMessage;
-    let type = Object.keys(q)[0];
-    return { ...q[type], mimetype: q[type]?.mimetype, message: q };
-  }
-  let ctx = mek.message?.extendedTextMessage?.contextInfo;
-  if (ctx?.quotedMessage) {
-    let q = ctx.quotedMessage;
-    let type = Object.keys(q)[0];
-    return { ...q[type], mimetype: q[type]?.mimetype, message: q };
-  }
-  if (m.reply_message) return m.reply_message;
-  return null;
+const toWebp = (input, output) =>
+  new Promise((resolve, reject) => {
+    ffmpeg(input).outputOptions([
+        '-vcodec', 'libwebp',
+        '-vf', "scale=512:512:force_original_aspect_ratio=decrease,fps=15,pad=512:512:-1:-1:color=white@0.0,split[a][b];[a]palettegen=reserve_transparent=on:transparency_color=ffffff[p];[b][p]paletteuse",
+        '-loop', '0', '-an', '-vsync', '0'
+      ]).on('error', reject).on('end', () => resolve(fs.readFileSync(output))).save(output)
+  })
+
+const hasAudio = (p) =>
+  new Promise((resolve, reject) =>
+    ffmpeg.ffprobe(p, (e, meta) =>
+      e ? reject(e) : resolve(meta.streams.some((s) => s.codec_type === 'audio'))
+    )
+  )
+
+// Download method for AHMED-MD - m.quoted.download()
+async function downloadQuoted(conn, m) {
+    const q = m.quoted
+    if (!q) throw new Error('No quoted')
+    if (typeof q.download === 'function') return await q.download()
+    if (typeof conn.downloadAndSaveMediaMessage === 'function') {
+        const p = await conn.downloadAndSaveMediaMessage(q, tempName())
+        const b = fs.readFileSync(p); fs.rmSync(p, { force: true }); return b
+    }
+    if (typeof conn.downloadMediaMessage === 'function') {
+        return await conn.downloadMediaMessage(q)
+    }
+    throw new Error('Download method not found')
 }
 
 cmd({
-  pattern: "asticker",
-  alias: ["audiosticker", "as"],
-  react: "🎵",
-  desc: "Make audio sticker from video",
-  category: "fun",
-  use: ".asticker [reply to video]",
-  filename: __filename
-}, async (conn, mek, m, { from, sender, reply }) => {
-  try {
-    await conn.sendMessage(from, { react: { text: '⏳', key: mek.key } });
-    let quoted = getQuoted(mek, m);
-    if (!quoted) return reply(`Reply to a video with .asticker${FOOTER}`);
+    pattern: 'asticker',
+    desc: 'Make audio sticker with AHMED-MD pack name - 40 sec',
+    category: 'sticker',
+    filename: __filename
+}, async (conn, mek, m, { from, reply }) => {
+    try {
+        const quoted = m.quoted
+        if (!quoted) return reply(`*Reply to:*\n\n1. Video + *.asticker* -> Video + Audio Sticker (40 Sec)\n2. Song / Voice + *.asticker* -> Save Audio (40 Sec)\n3. Sticker + *.asticker* -> Add Audio to Sticker`)
 
-    let mime = quoted.mimetype || quoted.message?.videoMessage?.mimetype || quoted.message?.audioMessage?.mimetype || quoted.message?.stickerMessage?.mimetype || "";
+        const sendAudioSticker = async (stickerBuf, audioMessage) => {
+            // Add your pack name before sending
+            const stickerWithExif = await addExif(stickerBuf, PACKNAME, AUTHOR)
+            const { stickerMessage } = await prepareWAMessageMedia({ sticker: stickerWithExif, isAnimated: true }, { upload: conn.waUploadToServer })
+            const msg = {
+                messageContextInfo: { messageSecret: randomBytes(32) },
+                audioStickerMessage: { message: { stickerMessage: { ...stickerMessage, audioMessage } } }
+            }
+            await conn.relayMessage(from, msg, {})
+        }
 
-    // ─── VIDEO CASE ───
-    if (mime.includes('video')) {
-      await reply(`Video mil gayi! Audio nikal raha hun...${FOOTER}`);
-      let videoMsg = quoted.message?.videoMessage || quoted;
-      let videoBuffer = await downloadQuotedMedia(videoMsg, 'video');
-      console.log("VIDEO SIZE:", videoBuffer.length);
+        // CASE 3: Reply to STICKER -> Add saved audio
+        if (quoted.type === 'stickerMessage' || quoted.mtype === 'stickerMessage' || quoted.sticker) {
+            const audioMessage = saved.get(from)
+            if (!audioMessage) return reply('❌ First reply to a song/voice with *.asticker* to save audio, then reply to a sticker.')
+            const stickerBuf = await downloadQuoted(conn, m)
+            await sendAudioSticker(stickerBuf, audioMessage)
+            return
+        }
 
-      if (videoBuffer.length < 1000) return reply(`Video download nahi hui, dobara try karo!${FOOTER}`);
+        // CASE 2: Reply to AUDIO / VOICE -> Save Audio (40 Sec)
+        if (quoted.type === 'audioMessage' || quoted.audio || quoted.mtype === 'audioMessage' || quoted.ptt) {
+            const audioBuf = await downloadQuoted(conn, m)
+            const inPath = path.join(TEMP, tempName() + '.mp3')
+            const outPath = path.join(TEMP, tempName() + '.ogg')
+            fs.writeFileSync(inPath, audioBuf)
+            const opus = await toOpus(inPath, outPath, STICKER_SECONDS)
+            const { audioMessage } = await prepareWAMessageMedia({ audio: opus, mimetype: 'audio/ogg; codecs=opus', ptt: true }, { upload: conn.waUploadToServer })
+            saved.set(from, audioMessage)
+            fs.rmSync(inPath, { force: true }); fs.rmSync(outPath, { force: true })
+            return reply('✅ *Audio Saved! (40 Sec)*\nNow reply to any sticker with *.asticker*')
+        }
 
-      let id = Date.now();
-      let videoPath = `/tmp/astick_${id}.mp4`;
-      let audioPath = `/tmp/astick_${id}.ogg`;
-      let stickerPath = `/tmp/astick_${id}.webp`;
-      fs.writeFileSync(videoPath, videoBuffer);
+        // CASE 1: Reply to VIDEO -> Video + Audio Sticker (40 Sec)
+        if (quoted.type === 'videoMessage' || quoted.video || quoted.mtype === 'videoMessage') {
+            await reply('⏳ *Making Audio Sticker... (40 Sec)*')
+            const videoBuf = await downloadQuoted(conn, m)
+            const inPath = path.join(TEMP, tempName() + '.mp4')
+            fs.writeFileSync(inPath, videoBuf)
+            if (!(await hasAudio(inPath))) return reply('❌ This video has no audio.')
+            const opusPath = path.join(TEMP, tempName() + '.ogg')
+            const opus = await toOpus(inPath, opusPath, STICKER_SECONDS)
+            const webpPath = path.join(TEMP, tempName() + '.webp')
+            const webpBuf = await toWebp(inPath, webpPath)
+            try {
+                const { audioMessage } = await prepareWAMessageMedia({ audio: opus, mimetype: 'audio/ogg; codecs=opus', ptt: true }, { upload: conn.waUploadToServer })
+                await sendAudioSticker(webpBuf, audioMessage)
+            } catch (e) {
+                console.log('AudioSticker fail:', e.message)
+                const withExif = await addExif(webpBuf, PACKNAME, AUTHOR)
+                await conn.sendMessage(from, { sticker: withExif }, { quoted: mek })
+                await reply('⚠️ Audio part failed, sent normal sticker.')
+            }
+            fs.rmSync(inPath, { force: true }); fs.rmSync(opusPath, { force: true }); fs.rmSync(webpPath, { force: true })
+            return
+        }
 
-      // Try FFmpeg - agar hai to
-      let ffmpegOk1 = await execPromise(`ffmpeg -y -i "${videoPath}" -vn -c:a libopus -b:a 64k "${audioPath}"`);
-      let ffmpegOk2 = await execPromise(`ffmpeg -y -i "${videoPath}" -vcodec libwebp -filter:v "fps=10,scale=512:512:force_original_aspect_ratio=decrease,pad=512:512:-1:-1:color=white@0.0" -loop 0 -preset default -an -vsync 0 "${stickerPath}"`);
-
-      // ─── FALLBACK: FFmpeg nahi hai to bhi kaam karega ───
-      if (!ffmpegOk1 || !fs.existsSync(audioPath)) {
-        console.log("FFMPEG NOT FOUND - Using Fallback");
-        await conn.sendMessage(from, { sticker: videoBuffer }, { quoted: mek });
-        await conn.sendMessage(from, { audio: videoBuffer, mimetype: 'audio/mp4', ptt: false }, { quoted: mek });
-        savedAudio.set(sender, videoBuffer);
-        await conn.sendMessage(from, { react: { text: '✅', key: mek.key } });
-        return; // ✅ BAS YEHI 1 LINE CHANGE KI HAI - Pehle yahan wo lamba msg tha, ab kuch nahi aayega
-      }
-
-      // FFmpeg chal gaya to perfect wala bhejo
-      if (fs.existsSync(stickerPath)) {
-        await conn.sendMessage(from, { sticker: fs.readFileSync(stickerPath) }, { quoted: mek });
-      } else {
-        await conn.sendMessage(from, { sticker: videoBuffer }, { quoted: mek });
-      }
-      if (fs.existsSync(audioPath)) {
-        let aud = fs.readFileSync(audioPath);
-        savedAudio.set(sender, aud);
-        await conn.sendMessage(from, { audio: aud, mimetype: 'audio/ogg; codecs=opus', ptt: false }, { quoted: mek });
-      }
-
-      [videoPath, audioPath, stickerPath].forEach(f => { if (fs.existsSync(f)) fs.unlinkSync(f); });
-      await conn.sendMessage(from, { react: { text: '✅', key: mek.key } });
-      return reply(`Audio Sticker ban gaya! ✅${FOOTER}`);
+        return reply('❌ Only reply to Video / Audio / Sticker with *.asticker*')
+    } catch (e) {
+        console.log('ASTICKER ERROR:', e)
+        reply(`❌ Error: ${e.message}`)
     }
-
-    // ─── AUDIO CASE ───
-    if (mime.includes('audio')) {
-      let audioMsg = quoted.message?.audioMessage || quoted;
-      let buf = await downloadQuotedMedia(audioMsg, 'audio');
-      savedAudio.set(sender, buf);
-      await conn.sendMessage(from, { react: { text: '✅', key: mek.key } });
-      return reply(`Audio save ho gaya! ✅\nAb sticker ko reply kar ke .asticker likho.${FOOTER}`);
-    }
-
-    // ─── STICKER CASE ───
-    if (mime.includes('sticker')) {
-      if (!savedAudio.has(sender)) return reply(`Pehle video/audio pe .asticker likho.${FOOTER}`);
-      let stickerMsg = quoted.message?.stickerMessage || quoted;
-      let stickerBuffer = await downloadQuotedMedia(stickerMsg, 'sticker');
-      await conn.sendMessage(from, { sticker: stickerBuffer }, { quoted: mek });
-      await conn.sendMessage(from, { audio: savedAudio.get(sender), mimetype: 'audio/ogg; codecs=opus' }, { quoted: mek });
-      await conn.sendMessage(from, { react: { text: '✅', key: mek.key } });
-      return reply(`Audio Sticker ban gaya! ✅${FOOTER}`);
-    }
-
-    return reply(`Video / Audio / Sticker ko reply karo!${FOOTER}`);
-  } catch (e) {
-    console.log("ASTICKER ERROR:", e);
-    await reply(`Error: ${e.message}${FOOTER}`);
-  }
-});
+})
