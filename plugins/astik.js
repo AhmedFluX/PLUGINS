@@ -13,19 +13,13 @@ const {
 const { cmd } = require('../command')
 const StickerMaker = require('../lib/sticker-maker')
 
-// FFmpeg and FFprobe paths
 const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path
-const ffprobePath = require('@ffprobe-installer/ffprobe').path
-
 ffmpeg.setFfmpegPath(ffmpegPath)
-ffmpeg.setFfprobePath(ffprobePath)
 
 const STICKER_SECONDS = 15
 const TEMP_DIR = path.join(os.tmpdir(), 'ahmed-md-astik')
 
-if (!fs.existsSync(TEMP_DIR)) {
-    fs.mkdirSync(TEMP_DIR, { recursive: true })
-}
+fs.mkdirSync(TEMP_DIR, { recursive: true })
 
 const saved = new Map()
 
@@ -35,19 +29,18 @@ const USAGE =
     '┃ Reply to a video with .astik\n' +
     '┃ to create an audio sticker.\n' +
     '┃\n' +
-    '┃ Reply to a voice note or song\n' +
-    '┃ with .astik to save its audio.\n' +
+    '┃ Reply to a voice note/song with\n' +
+    '┃ .astik to save its audio.\n' +
     '┃\n' +
-    '┃ Then reply to any sticker with\n' +
-    '┃ .astik to add the saved audio.\n' +
+    '┃ Reply to any sticker with .astik\n' +
+    '┃ to add the saved audio.\n' +
     '┃\n' +
     '╰━━━━━━━━━━━━━━━━━━━━╯'
 
 const tempName = () =>
     `astik-${crypto.randomBytes(6).toString('hex')}`
 
-// Extend Baileys message encoding
-const addAudioStickerFields = () => {
+function addAudioStickerFields() {
     const { Message } = proto
 
     if ('audioStickerMessage' in Message.prototype) return
@@ -59,10 +52,7 @@ const addAudioStickerFields = () => {
 
         if (m.audioStickerMessage != null) {
             Message.FutureProofMessage
-                .encode(
-                    m.audioStickerMessage,
-                    w.uint32(1074).fork()
-                )
+                .encode(m.audioStickerMessage, w.uint32(1074).fork())
                 .ldelim()
         }
 
@@ -87,26 +77,12 @@ const addAudioStickerFields = () => {
     Message.StickerMessage.prototype.audioMessage = null
 }
 
-// Check whether media contains audio
-const hasAudio = (file) =>
-    new Promise((resolve, reject) => {
-        ffmpeg.ffprobe(file, (error, metadata) => {
-            if (error) return reject(error)
-
-            resolve(
-                metadata.streams.some(
-                    stream => stream.codec_type === 'audio'
-                )
-            )
-        })
-    })
-
-// Convert audio/video to Opus
-const toOpus = (input, output, seconds) =>
-    new Promise((resolve, reject) => {
+function toOpus(input, output, seconds) {
+    return new Promise((resolve, reject) => {
         const command = ffmpeg(input)
             .noVideo()
             .outputOptions([
+                '-map', '0:a:0',
                 '-map_metadata', '-1',
                 '-c:a', 'libopus',
                 '-ac', '1',
@@ -115,9 +91,7 @@ const toOpus = (input, output, seconds) =>
                 '-f', 'ogg'
             ])
 
-        if (seconds) {
-            command.duration(seconds)
-        }
+        if (seconds) command.duration(seconds)
 
         command
             .on('error', error => {
@@ -132,22 +106,9 @@ const toOpus = (input, output, seconds) =>
             })
             .save(output)
     })
-
-// Download quoted media
-const downloadMedia = async (conn, quoted) => {
-    if (typeof quoted.download === 'function') {
-        return await quoted.download()
-    }
-
-    if (typeof conn.downloadMediaMessage === 'function') {
-        return await conn.downloadMediaMessage(quoted)
-    }
-
-    throw new Error('Media download function not available.')
 }
 
-// Upload audio as WhatsApp voice note
-const uploadVoice = async (conn, file, seconds) => {
+async function uploadVoice(conn, file, seconds) {
     const output = path.join(TEMP_DIR, `${tempName()}.ogg`)
 
     try {
@@ -170,13 +131,12 @@ const uploadVoice = async (conn, file, seconds) => {
     }
 }
 
-// Send combined audio sticker
-const sendAudioSticker = async (
+async function sendAudioSticker(
     conn,
     from,
     stickerMessage,
     audioMessage
-) => {
+) {
     addAudioStickerFields()
 
     return conn.relayMessage(
@@ -215,9 +175,8 @@ cmd({
         return reply(USAGE)
     }
 
-    const type = quoted.mtype
     const saveKey = `${from}:${sender}`
-
+    const type = quoted.mtype
     let file
 
     try {
@@ -232,37 +191,38 @@ cmd({
                 )
             }
 
-            const stickerMessage =
-                quoted.msg ||
-                quoted.message?.stickerMessage ||
-                quoted
-
             const {
-                contextInfo,
-                ...cleanSticker
-            } = stickerMessage
+                mtype,
+                id,
+                chat,
+                sender: quotedSender,
+                fromMe,
+                text,
+                mentionedJid,
+                download,
+                mimetype,
+                ptt,
+                ...stickerMessage
+            } = quoted
 
             await sendAudioSticker(
                 conn,
                 from,
-                cleanSticker,
+                stickerMessage,
                 audioMessage
             )
 
             return
         }
 
-        // Save audio from a voice note or song
+        // Save audio from voice note or song
         if (type === 'audioMessage') {
             file = path.join(TEMP_DIR, tempName())
 
-            const audio = await downloadMedia(conn, quoted)
+            const audio = await quoted.download()
             fs.writeFileSync(file, audio)
 
-            const audioMessage = await uploadVoice(
-                conn,
-                file
-            )
+            const audioMessage = await uploadVoice(conn, file)
 
             saved.set(saveKey, audioMessage)
 
@@ -272,16 +232,12 @@ cmd({
             )
         }
 
-        // Create audio sticker from a video
+        // Create audio sticker from video
         if (type === 'videoMessage') {
             file = path.join(TEMP_DIR, `${tempName()}.mp4`)
 
-            const video = await downloadMedia(conn, quoted)
+            const video = await quoted.download()
             fs.writeFileSync(file, video)
-
-            if (!(await hasAudio(file))) {
-                return reply('❌ This video does not contain audio.')
-            }
 
             const audioMessage = await uploadVoice(
                 conn,
@@ -319,7 +275,6 @@ cmd({
         return reply(
             `❌ *ASTIK ERROR*\n\n${error.message || 'Something went wrong.'}`
         )
-
     } finally {
         if (file) {
             fs.rmSync(file, { force: true })
