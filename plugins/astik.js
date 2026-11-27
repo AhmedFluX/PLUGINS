@@ -10,6 +10,7 @@ const {
     prepareWAMessageMedia
 } = require('@whiskeysockets/baileys')
 
+const { Sticker, StickerTypes } = require('wa-sticker-formatter')
 const { cmd } = require('../command')
 const StickerMaker = require('../lib/sticker-maker')
 
@@ -17,6 +18,9 @@ const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path
 ffmpeg.setFfmpegPath(ffmpegPath)
 
 const STICKER_SECONDS = 15
+const PACK_NAME = '— ˹˱𝐀𝅦 𝐇𝅦 𝐌𝅦 𝟑𝅦 𝐃𝅦˲˺ • 率'
+const PACK_AUTHOR = 'AHMED-MD'
+
 const TEMP_DIR = path.join(os.tmpdir(), 'ahmed-md-astik')
 
 fs.mkdirSync(TEMP_DIR, { recursive: true })
@@ -94,9 +98,9 @@ function toOpus(input, output, seconds) {
         if (seconds) command.duration(seconds)
 
         command
-            .on('error', error => {
+            .on('error', error =>
                 reject(new Error(`FFmpeg: ${error.message}`))
-            })
+            )
             .on('end', () => {
                 try {
                     resolve(fs.readFileSync(output))
@@ -129,6 +133,32 @@ async function uploadVoice(conn, file, seconds) {
     } finally {
         fs.rmSync(output, { force: true })
     }
+}
+
+async function makePackedSticker(buffer) {
+    const sticker = new Sticker(buffer, {
+        pack: PACK_NAME,
+        author: PACK_AUTHOR,
+        type: StickerTypes.DEFAULT
+    })
+
+    return await sticker.toBuffer()
+}
+
+async function uploadSticker(conn, buffer) {
+    const packed = await makePackedSticker(buffer)
+
+    const result = await prepareWAMessageMedia(
+        {
+            sticker: packed,
+            isAnimated: false
+        },
+        {
+            upload: conn.waUploadToServer
+        }
+    )
+
+    return result.stickerMessage
 }
 
 async function sendAudioSticker(
@@ -175,13 +205,17 @@ cmd({
         return reply(USAGE)
     }
 
-    const saveKey = `${from}:${sender}`
     const type = quoted.mtype
+    const saveKey = `${from}:${sender}`
+
     let file
 
     try {
         // Add saved audio to a sticker
-        if (type === 'stickerMessage') {
+        if (
+            type === 'stickerMessage' ||
+            quoted.mimetype === 'image/webp'
+        ) {
             const audioMessage = saved.get(saveKey)
 
             if (!audioMessage) {
@@ -191,19 +225,15 @@ cmd({
                 )
             }
 
-            const {
-                mtype,
-                id,
-                chat,
-                sender: quotedSender,
-                fromMe,
-                text,
-                mentionedJid,
-                download,
-                mimetype,
-                ptt,
-                ...stickerMessage
-            } = quoted
+            file = path.join(TEMP_DIR, `${tempName()}.webp`)
+
+            const stickerBuffer = await quoted.download()
+            fs.writeFileSync(file, stickerBuffer)
+
+            const stickerMessage = await uploadSticker(
+                conn,
+                stickerBuffer
+            )
 
             await sendAudioSticker(
                 conn,
@@ -247,14 +277,9 @@ cmd({
 
             const webp = await StickerMaker.videoToWebp(video)
 
-            const { stickerMessage } = await prepareWAMessageMedia(
-                {
-                    sticker: webp,
-                    isAnimated: true
-                },
-                {
-                    upload: conn.waUploadToServer
-                }
+            const stickerMessage = await uploadSticker(
+                conn,
+                webp
             )
 
             await sendAudioSticker(
@@ -275,6 +300,7 @@ cmd({
         return reply(
             `❌ *ASTIK ERROR*\n\n${error.message || 'Something went wrong.'}`
         )
+
     } finally {
         if (file) {
             fs.rmSync(file, { force: true })
