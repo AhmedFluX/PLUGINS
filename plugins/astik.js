@@ -4,13 +4,13 @@ const path = require('path')
 const os = require('os')
 const crypto = require('crypto')
 const ffmpeg = require('fluent-ffmpeg')
+const WebP = require('node-webpmux')
 
 const {
     proto,
     prepareWAMessageMedia
 } = require('@whiskeysockets/baileys')
 
-const { Sticker, StickerTypes } = require('wa-sticker-formatter')
 const { cmd } = require('../command')
 const StickerMaker = require('../lib/sticker-maker')
 
@@ -18,13 +18,14 @@ const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path
 ffmpeg.setFfmpegPath(ffmpegPath)
 
 const STICKER_SECONDS = 15
+
 const PACK_NAME = '— ˹˱𝐀𝅦 𝐇𝅦 𝐌𝅦 𝟑𝅦 𝐃𝅦˲˺ • 率'
-const PACK_AUTHOR = 'AHMED-MD'
 
 const TEMP_DIR = path.join(os.tmpdir(), 'ahmed-md-astik')
 
 fs.mkdirSync(TEMP_DIR, { recursive: true })
 
+// Saved audio storage
 const saved = new Map()
 
 const USAGE =
@@ -33,54 +34,66 @@ const USAGE =
     '┃ Reply to a video with .astik\n' +
     '┃ to create an audio sticker.\n' +
     '┃\n' +
-    '┃ Reply to a voice note/song with\n' +
-    '┃ .astik to save its audio.\n' +
+    '┃ Reply to a voice note/song\n' +
+    '┃ with .astik to save its audio.\n' +
     '┃\n' +
-    '┃ Reply to any sticker with .astik\n' +
-    '┃ to add the saved audio.\n' +
+    '┃ Reply to any sticker with\n' +
+    '┃ .astik to add saved audio.\n' +
     '┃\n' +
     '╰━━━━━━━━━━━━━━━━━━━━╯'
 
 const tempName = () =>
     `astik-${crypto.randomBytes(6).toString('hex')}`
 
-function addAudioStickerFields() {
-    const { Message } = proto
 
-    if ('audioStickerMessage' in Message.prototype) return
+// Add only sticker pack metadata.
+// Original WebP frames and animation are preserved.
+async function addPackMetadata(buffer) {
+    const image = new WebP.Image()
 
-    const encodeMessage = Message.encode
+    await image.load(buffer)
 
-    Message.encode = function (m, w) {
-        w = encodeMessage.call(this, m, w)
+    const isAnimated = Boolean(image.hasAnim)
 
-        if (m.audioStickerMessage != null) {
-            Message.FutureProofMessage
-                .encode(m.audioStickerMessage, w.uint32(1074).fork())
-                .ldelim()
-        }
+    const metadata = Buffer.from(
+        JSON.stringify({
+            'sticker-pack-id': 'astik',
+            'sticker-pack-name': PACK_NAME,
+            'sticker-pack-publisher': '',
+            emojis: []
+        }),
+        'utf8'
+    )
 
-        return w
+    const header = Buffer.from([
+        0x49, 0x49, 0x2A, 0x00,
+        0x08, 0x00, 0x00, 0x00,
+        0x01, 0x00, 0x41, 0x57,
+        0x07, 0x00
+    ])
+
+    const length = Buffer.alloc(4)
+    length.writeUIntLE(metadata.length, 0)
+
+    const exif = Buffer.concat([
+        header,
+        length,
+        metadata
+    ])
+
+    // Replace EXIF only, not image frames.
+    const output = await image.save(null, {
+        exif
+    })
+
+    return {
+        buffer: output,
+        isAnimated
     }
-
-    const encodeSticker = Message.StickerMessage.encode
-
-    Message.StickerMessage.encode = function (m, w) {
-        w = encodeSticker.call(this, m, w)
-
-        if (m.audioMessage != null) {
-            Message.AudioMessage
-                .encode(m.audioMessage, w.uint32(210).fork())
-                .ldelim()
-        }
-
-        return w
-    }
-
-    Message.prototype.audioStickerMessage = null
-    Message.StickerMessage.prototype.audioMessage = null
 }
 
+
+// Convert audio/video into Opus
 function toOpus(input, output, seconds) {
     return new Promise((resolve, reject) => {
         const command = ffmpeg(input)
@@ -95,12 +108,14 @@ function toOpus(input, output, seconds) {
                 '-f', 'ogg'
             ])
 
-        if (seconds) command.duration(seconds)
+        if (seconds) {
+            command.duration(seconds)
+        }
 
         command
-            .on('error', error =>
+            .on('error', error => {
                 reject(new Error(`FFmpeg: ${error.message}`))
-            )
+            })
             .on('end', () => {
                 try {
                     resolve(fs.readFileSync(output))
@@ -112,11 +127,20 @@ function toOpus(input, output, seconds) {
     })
 }
 
+
+// Upload audio as WhatsApp voice message
 async function uploadVoice(conn, file, seconds) {
-    const output = path.join(TEMP_DIR, `${tempName()}.ogg`)
+    const output = path.join(
+        TEMP_DIR,
+        `${tempName()}.ogg`
+    )
 
     try {
-        const audio = await toOpus(file, output, seconds)
+        const audio = await toOpus(
+            file,
+            output,
+            seconds
+        )
 
         const { audioMessage } = await prepareWAMessageMedia(
             {
@@ -130,37 +154,82 @@ async function uploadVoice(conn, file, seconds) {
         )
 
         return audioMessage
+
     } finally {
         fs.rmSync(output, { force: true })
     }
 }
 
-async function makePackedSticker(buffer) {
-    const sticker = new Sticker(buffer, {
-        pack: PACK_NAME,
-        author: PACK_AUTHOR,
-        type: StickerTypes.DEFAULT
-    })
 
-    return await sticker.toBuffer()
-}
+// Upload sticker without resizing or converting frames
+async function uploadSticker(conn, originalBuffer) {
+    const {
+        buffer,
+        isAnimated
+    } = await addPackMetadata(originalBuffer)
 
-async function uploadSticker(conn, buffer) {
-    const packed = await makePackedSticker(buffer)
-
-    const result = await prepareWAMessageMedia(
+    const { stickerMessage } = await prepareWAMessageMedia(
         {
-            sticker: packed,
-            isAnimated: false
+            sticker: buffer,
+            isAnimated
         },
         {
             upload: conn.waUploadToServer
         }
     )
 
-    return result.stickerMessage
+    return stickerMessage
 }
 
+
+// Custom Baileys audio sticker message
+function addAudioStickerFields() {
+    const { Message } = proto
+
+    if ('audioStickerMessage' in Message.prototype) {
+        return
+    }
+
+    const encodeMessage = Message.encode
+
+    Message.encode = function (m, w) {
+        w = encodeMessage.call(this, m, w)
+
+        if (m.audioStickerMessage != null) {
+            Message.FutureProofMessage
+                .encode(
+                    m.audioStickerMessage,
+                    w.uint32(1074).fork()
+                )
+                .ldelim()
+        }
+
+        return w
+    }
+
+    const encodeSticker = Message.StickerMessage.encode
+
+    Message.StickerMessage.encode = function (m, w) {
+        w = encodeSticker.call(this, m, w)
+
+        if (m.audioMessage != null) {
+            Message.AudioMessage
+                .encode(
+                    m.audioMessage,
+                    w.uint32(210).fork()
+                )
+                .ldelim()
+        }
+
+        return w
+    }
+
+    Message.prototype.audioStickerMessage = null
+    Message.StickerMessage.prototype.audioMessage = null
+}
+
+
+// Send audio sticker
 async function sendAudioSticker(
     conn,
     from,
@@ -190,10 +259,12 @@ async function sendAudioSticker(
     )
 }
 
+
+// Main command
 cmd({
     pattern: 'astik',
     alias: [],
-    desc: 'Create audio stickers and add audio to stickers',
+    desc: 'Create audio stickers and attach audio to stickers',
     category: 'sticker',
     filename: __filename
 }, async (conn, mek, m, context) => {
@@ -211,7 +282,8 @@ cmd({
     let file
 
     try {
-        // Add saved audio to a sticker
+
+        // 1. Add saved audio to an existing sticker
         if (
             type === 'stickerMessage' ||
             quoted.mimetype === 'image/webp'
@@ -225,14 +297,23 @@ cmd({
                 )
             }
 
-            file = path.join(TEMP_DIR, `${tempName()}.webp`)
+            file = path.join(
+                TEMP_DIR,
+                `${tempName()}.webp`
+            )
 
-            const stickerBuffer = await quoted.download()
-            fs.writeFileSync(file, stickerBuffer)
+            const originalSticker = await quoted.download()
 
+            if (!originalSticker || !originalSticker.length) {
+                throw new Error('Could not download the original sticker.')
+            }
+
+            fs.writeFileSync(file, originalSticker)
+
+            // Only EXIF changes. Original animation stays intact.
             const stickerMessage = await uploadSticker(
                 conn,
-                stickerBuffer
+                originalSticker
             )
 
             await sendAudioSticker(
@@ -245,14 +326,26 @@ cmd({
             return
         }
 
-        // Save audio from voice note or song
+
+        // 2. Save audio from voice note or song
         if (type === 'audioMessage') {
-            file = path.join(TEMP_DIR, tempName())
+            file = path.join(
+                TEMP_DIR,
+                tempName()
+            )
 
             const audio = await quoted.download()
+
+            if (!audio || !audio.length) {
+                throw new Error('Could not download the audio.')
+            }
+
             fs.writeFileSync(file, audio)
 
-            const audioMessage = await uploadVoice(conn, file)
+            const audioMessage = await uploadVoice(
+                conn,
+                file
+            )
 
             saved.set(saveKey, audioMessage)
 
@@ -262,13 +355,23 @@ cmd({
             )
         }
 
-        // Create audio sticker from video
+
+        // 3. Create audio sticker from video
         if (type === 'videoMessage') {
-            file = path.join(TEMP_DIR, `${tempName()}.mp4`)
+            file = path.join(
+                TEMP_DIR,
+                `${tempName()}.mp4`
+            )
 
             const video = await quoted.download()
+
+            if (!video || !video.length) {
+                throw new Error('Could not download the video.')
+            }
+
             fs.writeFileSync(file, video)
 
+            // Original working video conversion
             const audioMessage = await uploadVoice(
                 conn,
                 file,
